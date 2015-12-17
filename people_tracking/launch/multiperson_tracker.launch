@@ -1,18 +1,28 @@
 <launch>
+    <arg name="start_rviz" default="true"/>
     <arg name="rviz_args" value="-d $(find people_tracking)/extra/multipeople_tracking.rviz" />
+
     <arg name="map_file" default="$(find people_tracking)/extra/etu_map.yaml"/>
+
     <arg name="scan_topic" value="scan"/>
     <arg name="scan_frame_id" value="laser"/>
+    <arg name="map_to_scan_tf" default="0.3 1.65 0 0 0 0 1"/>
+
+    <arg name="output_loc" value="log"/>
+
+    <!-- It would be nice to make the person marker colors an arg/parameter -->
+    <!-- It would also be nice to update names and colors via rosservice -->
+    <!-- Reseting the walls should be a rosservice  -->
 
     <!-- Core tracking nodes-->
     <node pkg="people_tracking" name="wall_filter" type="wall_filter.py">
         <param name="scan_topic" value="$(arg scan_topic)"/>
     </node>
-    <node pkg="people_tracking" name="multiperson_tracker" type="multiperson_tracker.py" output="screen"/>
-    <node pkg="people_tracking" name="reset" type="reset_walls.py" output="screen"/>
+    <node pkg="people_tracking" name="multiperson_tracker" type="multiperson_tracker.py" output="$(arg output_loc)"/>
+    <node pkg="people_tracking" name="reset" type="reset_walls.py" output="$(arg output_loc)"/>
 
     <!-- Place markers for people's locations -->
-   <node pkg="people_tracking" name="people_marker" type="mark_people.py" output="screen">
+   <node pkg="people_tracking" name="people_marker" type="mark_people.py" output="$(arg output_loc)">
         <param name="scale_factor" value="2.0"/>
         <param name="person_height" value="0.5"/>
         <param name="multiperson" value="true"/>
@@ -22,10 +32,12 @@
     <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
     
     <!-- transform laser to frame of map-->
-    <node pkg="tf" type="static_transform_publisher" name="laser_to_map" args="0.3 1.65 0 0 0 0 1 /map /$(arg scan_frame_id) 100"/>
+    <node pkg="tf" type="static_transform_publisher" name="laser_to_map" args="$(arg map_to_scan_tf) /map /$(arg scan_frame_id) 100"/>
 
     <!-- Visualize in rviz -->
-    <node name="$(anon rviz)" pkg="rviz" type="rviz" required="false" 
-        respawn="false" output="screen" args="$(arg rviz_args)">
-    </node>
+    <group if="$(arg start_rviz)">
+        <node name="$(anon rviz)" pkg="rviz" type="rviz" required="false" 
+            respawn="false" output="$(arg output_loc)" args="$(arg rviz_args)">
+        </node>
+    </group>
 </launch>
