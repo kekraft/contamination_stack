@@ -9,11 +9,26 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   geometry_msgs
   message_generation
+  rviz
+  roscpp
+  tf
 )
 
 ## System dependencies are found with CMake's conventions
-# find_package(Boost REQUIRED COMPONENTS system)
+find_package(Boost REQUIRED)
 
+## QT related
+find_package(Qt4 COMPONENTS QtCore QtGui REQUIRED)
+include(${QT_USE_FILE})
+add_definitions(-DQT_NO_KEYWORDS)
+
+## Here we specify which header files need to be run through "moc",
+## Qt's meta-object compiler.
+qt4_wrap_cpp(MOC_FILES
+  src/draw_polygon_tool.h
+  src/draw_rectangle_tool.h
+  src/add_contamination_tool.h
+)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -95,26 +110,33 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 # include_directories(include)
-include_directories(
-  ${catkin_INCLUDE_DIRS}
+include_directories(${catkin_INCLUDE_DIRS})
+
+link_directories(${catkin_LIBRARY_DIRS})
+
+## Here we specify the list of source files, including the output of
+## the previous command which is stored in ``${MOC_FILES}``.
+set(SOURCE_FILES
+  src/draw_polygon_tool.cpp 
+  src/draw_rectangle_tool.cpp
+  src/add_contamination_tool.cpp
+  ${MOC_FILES}
 )
 
+
 ## Declare a cpp library
-# add_library(uv_decontamination
-#   src/${PROJECT_NAME}/uv_decontamination.cpp
-# )
+add_library(${PROJECT_NAME} ${SOURCE_FILES})
 
 ## Declare a cpp executable
-# add_executable(uv_decontamination_node src/uv_decontamination_node.cpp)
+## add_executable(contamination_monitor src/draw_polygon_tool.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
-# add_dependencies(uv_decontamination_node uv_decontamination_generate_messages_cpp)
+# add_dependencies(draw_polygon_tool contamination_monitor_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(uv_decontamination_node
-#   ${catkin_LIBRARIES}
-# )
+target_link_libraries(${PROJECT_NAME} ${QT_LIBRARIES} ${catkin_LIBRARIES})
+
 
 #############
 ## Install ##

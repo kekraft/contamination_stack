@@ -1,0 +1,27 @@
+<library path="lib/libcontamination_monitor">
+  
+  <class name="contamination_monitor/DrawPolygon"
+         type="contamination_monitor::DrawPolygonTool"
+         base_class_type="rviz::Tool">
+    <description>
+      Tool for drawing polygons in RVIZ.
+    </description>
+  </class>
+
+  <class name="contamination_monitor/DrawRectangle"
+         type="contamination_monitor::DrawRectangleTool"
+         base_class_type="rviz::Tool">
+    <description>
+      Tool for drawing rectangles in RVIZ.
+    </description>
+  </class>
+
+  <class name="contamination_monitor/AddContamination"
+         type="contamination_monitor::AddContaminationTool"
+         base_class_type="rviz::Tool">
+    <description>
+      Tool adding contamination to contamination map.
+    </description>
+  </class>
+
+</library>
