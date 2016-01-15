@@ -1,0 +1,33 @@
+<launch>
+    <arg name="rviz_args" value="-d $(find contamination_monitor)/extra/contamination_monitor.rviz" />
+    <arg name="map_file" default="$(find contamination_monitor)/extra/etu_map.yaml"/>
+    <arg name="scan_topic" value="scan"/>
+    <arg name="scan_frame_id" value="laser"/>
+
+    <arg name="output_loc" value="log"/>
+
+    <!-- Start person tracking -->
+    <include file="$(find people_tracking)/launch/multiperson_tracker.launch">
+        <arg name="start_rviz" value="false"/>
+    </include>
+
+    <!-- Place markers for people's locations -->
+   <node pkg="people_tracking" name="mark_people_contamination" type="mark_people.py" output="$(arg output_loc)">
+        <remap from="multiperson_markers" to="person_contam_markers"/>
+        <remap from="multperson_label_markers" to="person_contam_labels"/>
+        <param name="scale_factor" value="2.0"/>
+        <param name="person_height" value="0.5"/>
+        <param name="multiperson" value="true"/>
+    </node> 
+
+    <!--Launch Contamination Node-->
+    <!-- 
+    <arg name="contam_init" default="$(find contamination_monitor)/extra/contam_init.yaml"/>
+    <node pkg="contamination_monitor" name="contamination_node" type="contamination_grid_multi.py" args="$(arg contam_init)" output="screen"/> 
+    -->
+
+    <!-- Visualize in rviz -->
+    <node name="contam_view_rviz" pkg="rviz" type="rviz" required="false" 
+        respawn="false" output="screen" args="$(arg rviz_args)">
+    </node>
+</launch>

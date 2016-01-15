@@ -12,10 +12,15 @@ find_package(catkin REQUIRED COMPONENTS
   rviz
   roscpp
   tf
+  cv_bridge
+  image_transport
+  roslib
 )
 
-## System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED)
+
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
 
 ## QT related
 find_package(Qt4 COMPONENTS QtCore QtGui REQUIRED)
@@ -99,8 +104,8 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES uv_decontamination
-  CATKIN_DEPENDS rospy std_msgs geometry_msgs message_runtime
-#  DEPENDS system_lib
+  CATKIN_DEPENDS rospy std_msgs geometry_msgs message_runtime tf cv_bridge image_transport roslib
+  DEPENDS OpenCV
 )
 
 ###########
@@ -114,6 +119,13 @@ include_directories(${catkin_INCLUDE_DIRS})
 
 link_directories(${catkin_LIBRARY_DIRS})
 
+
+### added in for image stitching
+add_executable(image_stitcher eval/image_stitcher.cpp)
+add_executable(image_stitcher_detailed eval/image_stitcher_detailed.cpp)
+target_link_libraries( image_stitcher ${OpenCV_LIBS} ${catkin_LIBRARIES})
+target_link_libraries( image_stitcher_detailed ${OpenCV_LIBS} ${catkin_LIBRARIES})
+
 ## Here we specify the list of source files, including the output of
 ## the previous command which is stored in ``${MOC_FILES}``.
 set(SOURCE_FILES
@@ -123,12 +135,14 @@ set(SOURCE_FILES
   ${MOC_FILES}
 )
 
-
 ## Declare a cpp library
+#add_executable(contamination_monitor eval/image_stitcher.cpp)
 add_library(${PROJECT_NAME} ${SOURCE_FILES})
+
 
 ## Declare a cpp executable
 ## add_executable(contamination_monitor src/draw_polygon_tool.cpp)
+
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
@@ -136,7 +150,7 @@ add_library(${PROJECT_NAME} ${SOURCE_FILES})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME} ${QT_LIBRARIES} ${catkin_LIBRARIES})
-
+#target_link_libraries( image_stitcher ${OpenCV_LIBS})
 
 #############
 ## Install ##
