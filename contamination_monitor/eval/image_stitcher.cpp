@@ -42,7 +42,9 @@ int main()
  Mat rImg;
 
  Mat img_left = imread(img_dir_path + "/left.jpg");
- Mat img_right = imread(img_dir_path + "/right.jpg");
+ Mat img_right = imread(img_dir_path + "/center.jpg");
+ // Mat img_left = imread(img_dir_path + "/left.jpg");
+ // Mat img_right = imread(img_dir_path + "/center.jpg");
  //Mat img_right = imread(img_dir_path + "/left.jpg");  // Used to try stitcher on same image
  	// Mat img_left = imread(img_dir_path + "/panorama_image1.jpg");
  	// Mat img_right = imread(img_dir_path + "/panorama_image2.jpg");
@@ -68,13 +70,13 @@ int main()
  Stitcher stitcher = Stitcher::createDefault(true);
  stitcher.setWarper(new PlaneWarper());
  // stitcher.setFeaturesFinder(new detail::SurfFeaturesFinder(1000,3,4,3,4));
- stitcher.setRegistrationResol(0.75); /// 0.6
+ stitcher.setRegistrationResol(0.8); /// 0.6
  stitcher.setSeamEstimationResol(0.5);   /// 0.1
  stitcher.setCompositingResol(-1);   //1
  stitcher.setPanoConfidenceThresh(-1);   //1
  stitcher.setWaveCorrection(true);
  stitcher.setWaveCorrectKind(detail::WAVE_CORRECT_HORIZ);
- stitcher.setFeaturesMatcher(new detail::BestOf2NearestMatcher(false,0.3));
+ stitcher.setFeaturesMatcher(new detail::BestOf2NearestMatcher(true,0.3));
  stitcher.setBundleAdjuster(new detail::BundleAdjusterRay());
 
  
@@ -94,9 +96,9 @@ int main()
  std::cout << "Stitching status: " << status << std::endl;
 
  if (Stitcher::OK == status){
- 	imwrite(img_dir_path + "/output.jpg", rImg);
- 	imshow("Stitching Result",rImg);	
- 	waitKey(0);
+ 	imwrite(img_dir_path + "/output2.jpg", rImg);
+ 	// imshow("Stitching Result",rImg);	
+ 	// waitKey(0);
  } else if (Stitcher::ERR_NEED_MORE_IMGS == status){
  	std::cout << "Need more images." << std::endl;
  	std::cout << "Stitching failed." << std::endl;
