@@ -78,9 +78,15 @@ AddContaminationTool::AddContaminationTool()
 
   topic_property_ = new rviz::StringProperty("Topic", "/contamination_addition", 
                                             "The topic on which to publish points",
-                                              getPropertyContainer(), SLOT( updateTopic() ), this);
+                                              getPropertyContainer(), SLOT( updatePointTopic() ), this);
 
-  updateTopic();
+  updatePointTopic();
+
+  contam_topic_property_ = new rviz::StringProperty("Topic", "/added_contamination_polygon", 
+                                             "The topic on which to publish the square of contaminated areas.",
+                                              getPropertyContainer(), SLOT( updateContamAreaTopic() ), this);
+
+  updateContamAreaTopic();
 }
 
 // The destructor destroys the Ogre scene nodes for the rects so they
@@ -209,7 +215,7 @@ int AddContaminationTool::processMouseEvent( rviz::ViewportMouseEvent& event )
     ps.point.z = pos.z;
     ps.header.frame_id = context_->getFixedFrame().toStdString();
     ps.header.stamp = ros::Time::now();
-    pub_.publish( ps );
+    point_pub.publish( ps );
 
   }
   else
@@ -242,7 +248,7 @@ int AddContaminationTool::processMouseEvent( rviz::ViewportMouseEvent& event )
 
     if( event.leftDown() )
     {
-      makeContamRect( intersection );
+      // makeContamRect( intersection );
       current_rect_property_ = NULL; // Drop the reference so that deactivate() won't remove it.
 
       //std::cout << "Button clicked" << std::endl;
@@ -260,7 +266,7 @@ int AddContaminationTool::processMouseEvent( rviz::ViewportMouseEvent& event )
       ps.point.z = pos.z;
       ps.header.frame_id = context_->getFixedFrame().toStdString();
       ps.header.stamp = ros::Time::now();
-      pub_.publish( ps );
+      point_pub.publish( ps );
 
       // Get the dimensions of the rectangle
       std::vector<Ogre::Vector3> rect_pts = getRectDimensions(pos);
@@ -273,6 +279,25 @@ int AddContaminationTool::processMouseEvent( rviz::ViewportMouseEvent& event )
         dim_str << " [" << pt.x << "," << pt.y << "," << pt.z << "]";
         std::cout << dim_str.str().c_str() << std::endl;
       }
+
+      // Publish the area of the rectangle
+      geometry_msgs::PolygonStamped ply_stmpd;
+      
+      for( unsigned i = 0; i < rect_pts.size(); i++ )
+      {
+        Ogre::Vector3 v3 = rect_pts[ i ];
+        geometry_msgs::Point32 pt;
+        pt.x = v3.x;
+        pt.y = v3.y;
+        pt.z = v3.z;
+        ply_stmpd.polygon.points.push_back( pt ); 
+       
+      }
+
+      ply_stmpd.header.frame_id = context_->getFixedFrame().toStdString();
+      ply_stmpd.header.stamp = ros::Time::now();
+      contam_area_pub.publish( ply_stmpd );
+
 
       return Render | Finished;
     }
@@ -375,9 +400,14 @@ void AddContaminationTool::load( const rviz::Config& config )
 
 
 
-void AddContaminationTool::updateTopic()
+void AddContaminationTool::updatePointTopic()
 {
-  pub_ = nh_.advertise<geometry_msgs::PointStamped>( topic_property_->getStdString(), 1 );
+  point_pub = nh_.advertise<geometry_msgs::PointStamped>( topic_property_->getStdString(), 1 );
+}
+
+void AddContaminationTool::updateContamAreaTopic()
+{
+  contam_area_pub = nh_.advertise<geometry_msgs::PolygonStamped>( contam_topic_property_->getStdString(), 1 );
 }
 
 std::vector<Ogre::Vector3> AddContaminationTool::getRectDimensions(Ogre::Vector3 pos){
@@ -389,16 +419,18 @@ std::vector<Ogre::Vector3> AddContaminationTool::getRectDimensions(Ogre::Vector3
   double x1, x2, x3, x4;
   double y1, y2, y3, y4;
 
+  // make square, lowerleft, top left, top right, low right
   x1 =  pos.x; y1 =  pos.y; // both pos
-  x2 =  pos.x; y2 =  pos.y + 0.25; // y neg
-  x3 =  pos.x + 0.25; y3 =  pos.y; // x neg
-  x4 =  pos.x + 0.25; y4 =  pos.y + 0.25; // both neg
+  x2 =  pos.x; y2 =  pos.y + 0.5; // y neg
+  x3 =  pos.x + 0.5; y3 =  pos.y + 0.5; // both neg
+  x4 =  pos.x + 0.5; y4 =  pos.y; // x neg
 
   std::vector<Ogre::Vector3> rect_pts;
   rect_pts.push_back(Ogre::Vector3(x1, y1, pos.z));
   rect_pts.push_back(Ogre::Vector3(x2, y2, pos.z));
   rect_pts.push_back(Ogre::Vector3(x3, y3, pos.z));
   rect_pts.push_back(Ogre::Vector3(x4, y4, pos.z));
+  // rect_pts.push_back(Ogre::Vector3(x1, y1, pos.z));
 
   return rect_pts;
 }

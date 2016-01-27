@@ -84,15 +84,20 @@ private:
 
 public Q_SLOTS:
 
-  void updateTopic();
+  void updatePointTopic();
+
+  void updateContamAreaTopic();
 
 protected:
   ros::NodeHandle nh_;
-  ros::Publisher pub_;
+  ros::Publisher point_pub;
+  ros::Publisher contam_area_pub;
 
   
   rviz::StringProperty* topic_property_;
   rviz::BoolProperty* auto_deactivate_property_;
+
+  rviz::StringProperty* contam_topic_property_;
 
 };
 // END_TUTORIAL

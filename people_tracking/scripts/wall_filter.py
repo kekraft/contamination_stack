@@ -120,7 +120,7 @@ class WallFilter:
             wall_array_one = numpy.loadtxt(self.fp_1, delimiter=",")
 
             if len(wall_array_one) > 179 and len(wall_array_one) > 179:
-                self.walls[[],[]]
+                self.walls = [[],[]]
                 self.walls[0] = wall_array_zero.tolist()
                 self.walls[1] = wall_array_one.tolist()
 

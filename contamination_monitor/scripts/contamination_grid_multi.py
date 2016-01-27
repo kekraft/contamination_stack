@@ -15,6 +15,12 @@ import geometry_msgs.msg
 from std_msgs.msg import *
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from visualization_msgs.msg import Marker, MarkerArray
+from geometry_msgs.msg import Polygon, PolygonStamped
+import rospkg
+
+import os
+
+from contamination_monitor.srv import LoadContaminationGrid, SaveContaminationGrid
 
 #This class converts ellipse data into an OccupancyGrid message
 class Transmission():
@@ -27,6 +33,9 @@ class ContaminationGrid2D():
     
     def __init__(self):
         self.contam_level = -1 # neg 1 corresponds to unkonwn in occupancy grid
+        self.lock = threading.Lock()
+
+        self.transmission_method = Transmission.BINARY
 
         self.ogrid = OccupancyGrid()
         self.step = 0
@@ -44,8 +53,8 @@ class ContaminationGrid2D():
         #set of coordinates with contamination
         self.contam = {}
 
-        metadata = rospy.wait_for_message("map_metadata", MapMetaData, 120)
-        self._set_map_metadata(metadata)
+        metadata = rospy.wait_for_message("map_metadata", MapMetaData, 120) # this topic name should be passed in via parameter or config file
+        self.init_empty_contam_map(metadata)
 
         self.listener = tf.TransformListener()
         
@@ -58,16 +67,53 @@ class ContaminationGrid2D():
         
         self.tracking_marker_array_sub = rospy.Subscriber("multiperson_markers", MarkerArray, self.update_contam)
         # self.bot_marker_sub = rospy.Subscriber("cleaner_bot", Marker, self._clean_contam)
-        # self.update_filter_sub = rospy.Subscriber("update_filter_cmd", Bool, self.reset)
 
-        # rate = rospy.Rate(10.0)
-        
-        self.lock = threading.Lock()
+        self.add_contam_sub = rospy.Subscriber("added_contamination_polygon", PolygonStamped, self.add_contam_cb)
 
-        self.transmission_method = Transmission.BINARY
+        # services for loading/saving occ grid
+        self.load_contam_grid_service = rospy.Service('contamination_monitor/load_contam_grid', LoadContaminationGrid, self.load_contam_grid)
+        self.save_contam_grid_service = rospy.Service('contamination_monitor/save_contam_grid', SaveContaminationGrid, self.save_contam_grid)
+        rospack = rospkg.RosPack()
+        pkg_path = rospack.get_path('contamination_monitor')
+        self.default_file_path =  os.path.join(pkg_path, "extra", "contam_occ_grid")     
 
         self.reset(True)
 
+        self.pub_map_continually()
+
+
+
+        # while True:
+        #     self.occ_grid_pub.publish(self.ogrid)
+
+    def pub_map_continually(self):
+        
+        r = rospy.Rate(10)
+
+        while True:
+
+            self.lock.acquire()
+            self.occ_grid_pub.publish(self.ogrid)
+            self.lock.release()
+
+            r.sleep()
+
+
+
+
+    def add_contam_cb(self, msg):
+        ''' Makes these cells in the occ grid contaminated.
+        '''
+        lower_left = msg.polygon.points[0]
+        lower_left = [lower_left.x, lower_left.y]
+        upper_right = msg.polygon.points[2]
+        upper_right = [upper_right.x, upper_right.y]
+
+        print "Adding contam"
+        self._add_contam(lower_left, upper_right, intensity=self.FULLY_CONTAMINATED)
+        print "contam added"
+        
+        
 
     def update_contam(self, ellipse_array):     
 
@@ -101,12 +147,13 @@ class ContaminationGrid2D():
                         pass
                 
         
-        self.ogrid.header = Header(stamp=rospy.Time.now(),frame_id = "map")
-        self.occ_grid_pub.publish(self.ogrid)
+        # self.ogrid.header = Header(stamp=rospy.Time.now(),frame_id = "map")
+        # self.occ_grid_pub.publish(self.ogrid)
 
-        #publish contamination to show correct colors
-        self.layout.dim[0].size = len(self.ppl_contam_levels)
-        self.contam_pub.publish(Float32MultiArray(self.layout, self.ppl_contam_levels))
+        # #publish contamination to show correct colors
+        # self.layout.dim[0].size = len(self.ppl_contam_levels)
+        # self.contam_pub.publish(Float32MultiArray(self.layout, self.ppl_contam_levels))
+        pass
 
 
     def binary_person_2_env(self, ellipse_id, ellipse_center, ellipse_a, ellipse_b, ellipse_theta):
@@ -213,7 +260,7 @@ class ContaminationGrid2D():
                     self.power = v
                     print "cleaning power = {0}".format(v)
                 elif re.match("c[0-9]+", k):
-                    self._base_contam(v["lower_left"], v["upper_right"], v["intensity"])
+                    self._add_contam(v["lower_left"], v["upper_right"], v["intensity"])
 
 
         self.ppl_contam_levels = dict()
@@ -231,28 +278,41 @@ class ContaminationGrid2D():
         return (round(xy[0]/self.ogrid.info.resolution) * self.ogrid.info.resolution,
                 round(xy[1]/self.ogrid.info.resolution) * self.ogrid.info.resolution)
 
-    def _set_map_metadata(self, metadata):
-        self.ogrid.info = metadata
-        self.ogrid.data = [0 for i in xrange(metadata.width * metadata.height)]
+    def init_empty_contam_map(self, metadata):
+        ''' create empty grid, according to metadata params '''
+        data = [0 for i in xrange(metadata.width * metadata.height)]
+        self.set_contam_map(metadata, data)
+
+
+    def set_contam_map(self, metadata, data):
+        ''' Create map according to meta data params with the given data for the grid cells.'''
         self.step = metadata.resolution
         self.offset = (metadata.origin.position.x, metadata.origin.position.y)
 
+        self.ogrid.info = metadata
+        self.ogrid.data = data
+
     #add initial contamination (rectangles)
-    def _base_contam(self, lower_left, upper_right, intensity):
+    def _add_contam(self, lower_left, upper_right, intensity, print_stuff = False):
+
+        self.lock.acquire()
+
         lower_left = self._snap_to_cell(lower_left)
         upper_right = self._snap_to_cell(upper_right)
+        print "Lower left ", lower_left
+        print "Upper right ", upper_right
 
         for x in np.arange(lower_left[0], upper_right[0], self.step):
             for y in np.arange(lower_left[1], upper_right[1], self.step):
                 index = self._xy_to_cell((x, y))
-                #print index
+                if print_stuff:
+                    print index
                 self.ogrid.data[index] = intensity
                 self.contam[index] = (x, y)
-                
-        self.ogrid.header = Header(stamp=rospy.Time.now(), frame_id="map")
-        self.occ_grid_pub.publish(self.ogrid)
-        #print "loaded map"
 
+        self.lock.release()
+                
+        
     #turn ellipse into points
     def _get_ellipse_data(self,ellipse):
         #transform from ellipse frame to map frame and get ellipse data
@@ -306,6 +366,80 @@ class ContaminationGrid2D():
         
         self.ogrid.header = Header(stamp=rospy.Time.now(), frame_id = "map")
         self.occ_grid_pub.publish(self.ogrid)
+
+
+    def save_contam_grid(self, srv_cmd):
+        is_written = False
+
+        if srv_cmd.save_contam_grid == True:
+
+            fp = ""
+            if srv_cmd.from_default_file == True:
+                fp = self.default_file_path
+            else:
+                fp = srv_cmd.file_path
+
+            self.lock.acquire()
+
+            data = dict(
+                Header = self.ogrid.header,
+                MapMetaData = self.ogrid.info,
+                GridFile = fp + ".csv",
+                )
+
+            #### get grid data as numpy and save as seperate file       
+            with open(fp + ".yaml", 'w') as outfile:
+                print "Saving to FP ", fp
+                outfile.write( yaml.dump(data, default_flow_style=False) )
+                
+                
+                np.savetxt(fp + ".csv", np.array(self.ogrid.data, dtype=np.int8), delimiter=",")
+                print "Saved"
+                is_written = True
+                
+            self.lock.release()     
+
+        print "Saved and released"
+        return is_written
+
+    def load_contam_grid(self, srv_cmd):
+
+        is_loaded = False
+
+        if srv_cmd.load_contam_grid == True:
+
+            fp = ""
+            if srv_cmd.from_default_file == False:
+                fp = srv_cmd.file_path
+            else:
+                fp = self.default_file_path               
+
+
+            with open(fp + ".yaml", "r") as infile:
+                self.lock.acquire()
+                for k, v in yaml.load(infile.read()).iteritems():
+                    if k == "Header":
+                        self.ogrid.header = v
+
+                    elif k == "MapMetaData":
+                        self.ogrid.info = v
+                        self.step = v.resolution
+                        self.offset = (v.origin.position.x, v.origin.position.y)
+
+                    elif k == "GridFile":
+                        self.default_file_path = v
+
+                    else: 
+                        raise TypeError("Unexpected key type in yaml file: " + fp)
+
+                self.ogrid.data = list(np.loadtxt(fp + ".csv", dtype=np.int8, delimiter=","))
+
+                self.lock.release()
+                is_loaded = True
+
+        print "Is loaded: ", is_loaded
+        
+        return is_loaded
 
 
 if __name__ == '__main__':

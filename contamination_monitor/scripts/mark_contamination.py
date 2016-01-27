@@ -24,22 +24,15 @@ from contamination_monitor.msg import PersonLocation2D, PersonLocation2DArray
 
 import hashlib
 
+
 class PersonMarker():
-    def __init__(self, scale_factor=0.5, person_height=0.5, multi_case = False):
+    def __init__(self, scale_factor=0.5, person_height=0.5):
         self.scale_factor = scale_factor #scale, in meters
         self.person_height = person_height
 
-        self.multi_case = multi_case
-
-        if multi_case:
-            self.people_locations_sub = rospy.Subscriber("people_locations", PersonLocation2DArray, self.people_locations_cb)        
-            self.people_marker_pub = rospy.Publisher("multiperson_markers", MarkerArray, queue_size=10)
-            self.people_label_marker_pub = rospy.Publisher("multperson_label_markers", MarkerArray, queue_size=10)
-
-        else:
-            self.person_location_sub = rospy.Subscriber('persons_location', PersonLocation2D, self.person_locations_cb)
-            self.person_marker_pub = rospy.Publisher("persons_marker", Marker, queue_size=10)
-
+        self.people_locations_sub = rospy.Subscriber("people_locations", PersonLocation2DArray, self.people_locations_cb)        
+        self.people_marker_pub = rospy.Publisher("multiperson_markers", MarkerArray, queue_size=10)
+        self.people_label_marker_pub = rospy.Publisher("multperson_label_markers", MarkerArray, queue_size=10)
         
     def people_locations_cb(self, data):
         ## Handles an array of personlocation2d 
@@ -163,8 +156,7 @@ if __name__ == '__main__':
 
     scale = rospy.get_param('~scale_factor')
     person_height = rospy.get_param('~person_height')
-    multiperson_case = rospy.get_param('~multiperson') # true == multiperson tracking, false == single person tracking
 
-    person_marker = PersonMarker(scale, person_height, multiperson_case)
+    person_marker = PersonMarker(scale, person_height)
     
     rospy.spin()

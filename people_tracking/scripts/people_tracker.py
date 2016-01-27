@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import rospy
-import numpy
+import numpy as np
 from std_msgs.msg import *
 from geometry_msgs.msg import Point, Quaternion, Pose, Vector3
 from visualization_msgs.msg import Marker, MarkerArray
@@ -46,6 +46,16 @@ class Person:
             self.center = e.center
         
         self.theta = e.theta
+
+        print "Updated myself"
+        print self
+
+    def __str__(self):
+        person_str = 'Name: {0}  \
+                        \n  Contamination Level: {1}\n  Old position:{2} \n  Current Position: center: {3}, theta: {4}, a: {5}, b:{6}\
+                       '.format(self.name, self.contamination_level, self.last_pos, \
+                                  self.center, self.theta, self.a, self.b)
+        return person_str
 
 class Multitracker:
     def __init__ (self):
@@ -109,24 +119,53 @@ class Multitracker:
         ellipses = range(len(new_ellipses))
 
         print "\n\n\n"
-        old_centers = numpy.asarray([e.center for e in self.people])
+        old_centers = np.asarray([e.center for e in self.people])
         print "Old c: \n", old_centers
-        new_centers = numpy.asarray([e.center for e in new_ellipses])
+        new_centers = np.asarray([e.center for e in new_ellipses])
         print "New c: \n", new_centers
 
         new_people = []
         for n_index, nc in enumerate(new_centers):
-            for o_index, oc in enumerate(old_centers):
-                print "Oc ", oc
-                if abs(pdist(oc,nc)) < dist_threshold:
-                    # match between old timestep ellipse and the new ellipse
-                    new_people.append(update(new_ellipses[n_index]))
-                    break
 
-            # No match found, add it in
-            new_people.append(Person(new_ellipses[n_index]))
+            new_is_matched = False
+            for o_index, oc in enumerate(old_centers):
+                print "Oc ", oc, " shape ", oc.shape
+                print "Nc ", nc, " shape ", nc.shape
+                print "nc type ", type(nc)
+
+                pt_matrix = np.zeros((2,2))
+                pt_matrix[[0],] = oc
+                pt_matrix[[1],] = nc
+                print "pt matrix: ", pt_matrix, "shape ", pt_matrix.shape
+                print "nc: ", nc
+
+                dist = pdist(pt_matrix, 'euclidean')
+                print "distance ", dist
+                if abs(dist) < dist_threshold:
+                    # match between old timestep ellipse and the new ellipse
+                    print "old person"
+                    old_person = self.people[o_index]
+                    print old_person
+                    old_person.update(new_ellipses[n_index])
+                    print "matched person!"
+                    print old_person
+                    new_people.append(old_person)
+                    print "Found match"
+                    print "length of new ppl ", len(new_people)
+                    new_is_matched = True
+                    break # the new one is matched, move on to another new one
+
+            if not new_is_matched:
+                # No match found, add it in
+                print "no match found, adding one in"
+                new_person = Person(new_ellipses[n_index])
+                print new_person
+                new_people.append(new_person)
+                print "length of new ppl after no match ", len(new_people)
 
         self.people = new_people
+        print "all people", len(new_people)
+        print "".join([str(per) for per in self.people] )
                        
         
         '''
@@ -193,7 +232,7 @@ class Multitracker:
             angle += incr
         #eps = range, min_samples = min# of points in cluster.
         
-        points = numpy.asarray(points)
+        points = np.asarray(points)
         if len(points) > 3:
             db = DBSCAN(eps=0.5, min_samples=3).fit(points)
         else:

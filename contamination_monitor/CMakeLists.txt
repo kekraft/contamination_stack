@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   image_transport
   roslib
+  occupancy_grid_utils
 )
 
 find_package(Boost REQUIRED)
@@ -72,11 +73,11 @@ add_message_files(
 )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+add_service_files(
+   FILES
+   LoadContaminationGrid.srv
+   SaveContaminationGrid.srv
+)
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -104,7 +105,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES uv_decontamination
-  CATKIN_DEPENDS rospy std_msgs geometry_msgs message_runtime tf cv_bridge image_transport roslib
+  CATKIN_DEPENDS rospy std_msgs geometry_msgs message_runtime tf cv_bridge image_transport roslib occupancy_grid_utils
   DEPENDS OpenCV
 )
 
@@ -125,6 +126,10 @@ add_executable(image_stitcher eval/image_stitcher.cpp)
 add_executable(image_stitcher_detailed eval/image_stitcher_detailed.cpp)
 target_link_libraries( image_stitcher ${OpenCV_LIBS} ${catkin_LIBRARIES})
 target_link_libraries( image_stitcher_detailed ${OpenCV_LIBS} ${catkin_LIBRARIES})
+
+## grid utils
+add_executable(test_grid_utils src/test_grid_utils.cpp)
+target_link_libraries( test_grid_utils ${catkin_LIBRARIES})
 
 ## Here we specify the list of source files, including the output of
 ## the previous command which is stored in ``${MOC_FILES}``.
