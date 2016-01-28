@@ -24,8 +24,8 @@
     -->
     
     <!--Launch Contamination Node-->
-    <node pkg="contamination_monitor" name="contamination_node" type="contamination_grid_multi.py" args="$(arg contam_init)" output="screen"/> 
-
+    <!-- <node pkg="contamination_monitor" name="contamination_node" type="contamination_grid_multi.py" args="$(arg contam_init)" output="screen"/> 
+ -->
     <!-- Visualize in rviz -->
     <group if="$(arg start_rviz)">
         <node name="contam_view_rviz" pkg="rviz" type="rviz" required="false" 

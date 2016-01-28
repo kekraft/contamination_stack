@@ -1,0 +1,5 @@
+bool learn_walls
+# Number of laser messages to use to learn the walls
+int64 num_laser_msgs
+---
+bool success

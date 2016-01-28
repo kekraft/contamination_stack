@@ -77,6 +77,7 @@ add_service_files(
    FILES
    LoadContaminationGrid.srv
    SaveContaminationGrid.srv
+   ResetContaminationGrid.srv
 )
 
 ## Generate actions in the 'action' folder

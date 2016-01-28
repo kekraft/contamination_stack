@@ -1,0 +1,5 @@
+bool load_contam_grid
+bool from_default_file
+string file_path
+---
+bool success
