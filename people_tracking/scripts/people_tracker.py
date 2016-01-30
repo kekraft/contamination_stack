@@ -10,15 +10,16 @@ from sklearn.cluster import DBSCAN
 from sklearn.neighbors import NearestNeighbors
 from math import sin, cos, sqrt
 from scipy.spatial.distance import pdist
+import Queue
 
 from ellipse2d import Ellipse2d
 
 
-from contamination_monitor.msg import PersonLocation2D, PersonLocation2DArray
+from people_tracking.msg import PersonLocation, PersonLocationArray
 
 
 class Person:
-    def __init__(self, e=None, axis_a=0.9, center_a=0.1):
+    def __init__(self, e, time_stamp, name="uknown", axis_a=0.9, center_a=0.1, prev_positions_maxsize = 10):
         if e is None:
             self.a = self.center = self.b = self.theta = None
         else:
@@ -27,14 +28,31 @@ class Person:
             self.center = e.center
             self.theta = e.theta
 
-        self.last_pos = None
+        self.prev_positions = list()
+        self.prev_positions_maxsize = prev_positions_maxsize
+
         self.axis_alpha = axis_a
         self.center_alpha = center_a
-        self.name = "unknown"
+        self.name = name
 
-        self.contamination_level = -1
+        self.last_update = time_stamp
+
         
-    def update(self, e):
+    def update(self, e, time_stamp):
+        ''' Update current position and stores previous position.
+            The current position becomes that of the e.
+            The previous position gets loaded in the previous positions list
+
+            Stores time the update was performed
+        '''
+        # store prev position before updating current position
+        # older positions are stored at front of list.
+        prev_pos = (self.center[0], self.center[1], self.theta, self.a, self.b, self.last_update)
+        if len(self.prev_positions) > self.prev_positions_maxsize:
+            # pop off the oldest position
+            self.prev_positions.pop(0)
+        self.prev_positions.append(prev_pos)
+
         if self.a != None and self.b != None and self.center != None:
             self.center = [self.center[i]*self.center_alpha + e.center[i]*(1-self.center_alpha) for i in [0, 1]]
             self.a = self.a*self.axis_alpha + e.a*(1-self.axis_alpha)
@@ -47,17 +65,63 @@ class Person:
         
         self.theta = e.theta
 
+        self.last_update = time_stamp
+
+
         print "Updated myself"
         print self
 
+    def get_last_position(self):
+        # Returns last (x,y,theta) in pre positions list
+        prev_pos = self.prev_positions(len(self.prev_positions) - 1)
+        
+        x = prev_pos[0]
+        y = prev_pos[1]
+        theta = prev_pos[2]
+
+        return (x,y,theta)
+
+    def get_last_time_updated(self):
+        return self.last_update
+
+    def is_match(self, e, e_stamp, match_dist_thresh = 0.8, match_time_thresh = 0.3):
+        ''' Returns true if the person and the ellipse are a match.
+            False, otherwise.
+            Matches are based on the time stamp differences and the 
+             location differences. Both within some threshold.
+        '''
+        # dur_diff = (e_stamp.to_sec() - self.last_update.to_sec())
+        dur_diff = e_stamp - self.last_update
+        # print "Succesful dur_diff: ", dur_diff, " of type ", type(dur_diff)
+        
+        if (dur_diff.to_sec() < match_time_thresh):
+            pt_matrix = np.zeros((2,2))
+            pt_matrix[[0],] = self.center
+            pt_matrix[[1],] = e.center
+            # print "pt matrix: ", pt_matrix, "shape ", pt_matrix.shape
+            dist = pdist(pt_matrix, 'euclidean')
+            # print "distance ", dist
+            if abs(dist) < match_dist_thresh:
+                return True
+            else:
+                print "Failed dist match"
+        else:
+            print "Failed time match"
+        return False
+
+
     def __str__(self):
         person_str = 'Name: {0}  \
-                        \n  Contamination Level: {1}\n  Old position:{2} \n  Current Position: center: {3}, theta: {4}, a: {5}, b:{6}\
-                       '.format(self.name, self.contamination_level, self.last_pos, \
+                        \nOld positions:{1} \n  Current Position: center: {2}, theta: {3}, a: {4}, b:{5}\
+                       '.format(self.name, self.prev_positions, \
                                   self.center, self.theta, self.a, self.b)
         return person_str
 
 class Multitracker:
+    
+    potential_names = Queue.Queue()
+    [potential_names.put(str(x)) for x in xrange(200)]
+
     def __init__ (self):
 
         self.people = []
@@ -67,13 +131,12 @@ class Multitracker:
 
         self.person_tracker = PersonTracker() ### allows us to get some methods from person tracker
 
-        self.marker_pub = rospy.Publisher("multiperson_markers", MarkerArray, queue_size=10)
-        self.people_locations_pub = rospy.Publisher("people_locations", PersonLocation2DArray, queue_size=10)
+        # self.marker_pub = rospy.Publisher("multiperson_markers", MarkerArray, queue_size=10)
+        self.people_locations_pub = rospy.Publisher("people_locations", PersonLocationArray, queue_size=10)
 
-        self.scan_sub = rospy.Subscriber("filtered_scan", LaserScan, self.find_ppl_from_scan, self.marker_pub)
+        self.scan_sub = rospy.Subscriber("filtered_scan", LaserScan, self.find_ppl_from_scan)
         # self.contam_array_sub = rospy.Subscriber("contam_array", Float32MultiArray, self.get_colors)
         
-        self.filter_cmd_sub = rospy.Subscriber("update_filter_cmd", Bool, self.reset, self.marker_pub)
 
     def reset (self, run, pub):
         m = Marker(header=Header(stamp=rospy.Time.now(), frame_id="laser"), ns="person", id=0, type=3, action=3)
@@ -105,21 +168,22 @@ class Multitracker:
         
         return sort
 
-    def match_people(self, new_ellipses):
+    def match_people(self, new_ellipses, time_stamp):
         ''' Matches people from one timestep to another.
 
             People are currently represented as ellipses.
             Assumes that from one timestep to another, the
-                people will only move just a little bit.
+                people will move just a little bit.
 
             Doesn't not gracefully handle cases when 2 people overlap closely.
 
         '''
-        dist_threshold = 0.05 # distance 1 pt from another pt in timesteps to be considered just one pt
+        dist_thres = 0.05 # distance 1 pt from another pt in timesteps to be considered just one pt
+        time_thres = 0.1 
         ellipses = range(len(new_ellipses))
 
         print "\n\n\n"
-        old_centers = np.asarray([e.center for e in self.people])
+        old_centers = np.asarray([person.center for person in self.people])  
         print "Old c: \n", old_centers
         new_centers = np.asarray([e.center for e in new_ellipses])
         print "New c: \n", new_centers
@@ -129,85 +193,47 @@ class Multitracker:
 
             new_is_matched = False
             for o_index, oc in enumerate(old_centers):
-                print "Oc ", oc, " shape ", oc.shape
-                print "Nc ", nc, " shape ", nc.shape
-                print "nc type ", type(nc)
 
-                pt_matrix = np.zeros((2,2))
-                pt_matrix[[0],] = oc
-                pt_matrix[[1],] = nc
-                print "pt matrix: ", pt_matrix, "shape ", pt_matrix.shape
-                print "nc: ", nc
-
-                dist = pdist(pt_matrix, 'euclidean')
-                print "distance ", dist
-                if abs(dist) < dist_threshold:
-                    # match between old timestep ellipse and the new ellipse
-                    print "old person"
+                if self.people[o_index].is_match(new_ellipses[n_index], time_stamp):
+                    # match between old timestep ellipse and the new ellipse                    
                     old_person = self.people[o_index]
-                    print old_person
-                    old_person.update(new_ellipses[n_index])
-                    print "matched person!"
-                    print old_person
+                    
+                    old_person.update(new_ellipses[n_index], time_stamp)
+                    
                     new_people.append(old_person)
-                    print "Found match"
-                    print "length of new ppl ", len(new_people)
+                    
                     new_is_matched = True
+                    
+                    # print "old person"
+                    # print old_person
+                    # print "Found match"
+                    # print "length of new ppl ", len(new_people)
+                    # print "matched person!"
+                    # print old_person
+
                     break # the new one is matched, move on to another new one
 
             if not new_is_matched:
-                # No match found, add it in
-                print "no match found, adding one in"
-                new_person = Person(new_ellipses[n_index])
-                print new_person
+                # No match found, add it in as a new person
+                # name = (str(time_stamp.to_sec()))
+                ''' + 
+                        str(new_ellipses[n_index].center[0]) + 
+                        str(new_ellipses[n_index].center[1]))
+                '''
+                name = self.potential_names.get()
+                print "Name: ", name
+                new_person = Person(new_ellipses[n_index], time_stamp, name)
+
                 new_people.append(new_person)
+
+                print "no match found, adding one in"
+                print new_person
                 print "length of new ppl after no match ", len(new_people)
 
         self.people = new_people
         print "all people", len(new_people)
         print "".join([str(per) for per in self.people] )
-                       
-        
-        '''
-        ellipses = range(len(newc))
-        dist = []
-        ind = []
-        
-        try:    
-            neighbors = NearestNeighbors(n_neighbors=2)
-            neighbors.fit(oldc)
-            print neighbors
-            
-            dist, ind = neighbors.kneighbors(newc) #ind matches index of oldc to match with
-            print "dist: ", dist
-            print "ind: ", ind #test
-            # sort into dict: key=old index, value = (new index, distance)
-
-            sort = {}
-        
-            for e in ellipses:
-                sort = self._min_dist(dist, ind, sort, e)
-            
-            for old, new in sort.iteritems():
-                self.people[old].update(new_ellipses[new[0]])
-                ellipses.remove(new[0])
-        
-        except ValueError, e:
-            print "In exception"
-            # raise e
-            pass
-
-        #add any remaining ellipses to the list
-        if ellipses:
-            for e in ellipses:
-                self.people.append(Person(new_ellipses[e]))
-                self.e_colors.append(self.red)
-
-        '''
-        
-        
-        
-       
+                          
         
     # def get_colors(self, contamination):
     #     data = contamination.data
@@ -218,43 +244,24 @@ class Multitracker:
     #             self.e_colors[c] = self.green
 
     #data to markers - does not link markers to past marker
-    def find_ppl_from_scan(self, data, publisher):
-        angle = data.angle_min
-        incr = data.angle_increment
-        max_range = data.range_max
-        ranges = data.ranges
-        points = []
-        
-        for r in ranges:
-            #add all valid ranges to some xy range
-            if r < max_range:
-                points.append([cos(angle)*r, sin(angle)*r])
-            angle += incr
-        #eps = range, min_samples = min# of points in cluster.
-        
-        points = np.asarray(points)
-        if len(points) > 3:
-            db = DBSCAN(eps=0.5, min_samples=3).fit(points)
-        else:
+    def find_ppl_from_scan(self, data):
+        # angle = data.angle_min
+        # incr = data.angle_increment
+        # max_range = data.range_max
+        # ranges = data.ranges
+        # points = []        
+
+        # Get x,y points of laser, excluding max distance angles
+        points = self.points_from_ranges(data.ranges, data.angle_increment, data.angle_min, data.range_max)
+
+        # Get ellipses from the (x,y) points
+        new_ellipses = self.get_ellipses_from_points(points)
+
+        ## if no new ellipses, what to do?
+        # add missed timestep to all ppl then return
+        if len(new_ellipses) < 1:
             return
-
-        labels = db.labels_
-        #return points, labels
-        # Number of clusters in labels, ignoring noise if present.
-        n_clusters = len(set(labels)) - (1 if -1 in db.labels_ else 0)
-        print "Num clusters: ", n_clusters
-        new_ellipses = []
-        for n in xrange(n_clusters):
-            xy = points[labels==n]
-            e = Ellipse2d()
-            e.fit(xy)
-            print e
-
-            ## check to see if its a valid Ellipse
-            # if self.person_tracker.is_valid_person_ellipse(e):
-            if e.is_valid():
-                print "valid e : ", e
-                new_ellipses.append(e)
+        print "New ellipses: ", new_ellipses
         
 
         # **********************************
@@ -275,25 +282,85 @@ class Multitracker:
         #     markers.markers.append(m)
 
         # publisher.publish(markers)
-        # *******************************
-        
+        # *******************************    
 
-
-        # match new ellipses (representing ppl) to ones previously found in earlier time steps
-        #
-        print "New ellipses: ", new_ellipses
-        people_data = PersonLocation2DArray()
-
-        # try:
-        self.match_people(new_ellipses)
+        self.match_people(new_ellipses, data.header.stamp)
         print "Num people found after matching: ", len(self.people)
-        markers = MarkerArray()
         
+        # Publish the current people       
+        self.pub_ppl_data()
+
+
+    def points_from_ranges(self, ranges, angle_increment, min_angle, max_dist):
+        '''
+        Return all "valid" laser ranges from the current scan
+        and append them as [x,y] locations rather than just distances.
+
+        Valid means, anything that is not the max distance of the laser scan.
+        '''
+        angle = min_angle
+        points = []
+
+        for r in ranges:
+            if r < max_dist:
+                points.append([cos(angle)*r, sin(angle)*r])
+            angle += angle_increment        
+
+        return np.asarray(points)
+
+
+    def get_ellipses_from_points(self, points):
+        '''
+        Returns a list of ellipses that were fit to the points.
+
+        Clusters the points (must be at least 4 points).
+        Fits ellipses to each cluster.
+        Checks if the these are valid, ppl-sized ellipses.
+        If so, appends these to a list of elllipses.
+        '''
+
+        if len(points) > 3:
+            db = DBSCAN(eps=0.5, min_samples=4).fit(points)
+        else:
+            # no points to cluster, so return
+            return []
+
+        labels = db.labels_
+
+        #return points, labels
+        # Number of clusters in labels, ignoring noise if present.
+
+        ## Fit an ellipse to each cluster
+        n_clusters = len(set(labels)) - (1 if -1 in db.labels_ else 0)
+        print "Num clusters: ", n_clusters
+        new_ellipses = []
+        for n in xrange(n_clusters):
+            xy = points[labels==n]
+            e = Ellipse2d()
+            e.fit(xy)
+            print e
+
+            ## check to see if its a valid Ellipse
+            if e.is_valid():
+                print "valid e : ", e
+                new_ellipses.append(e)
+
+        return new_ellipses
+
+    def pub_ppl_data(self):
+        people_data = PersonLocationArray()
+        # markers = MarkerArray()
         for i in xrange(len(self.people)):
             person = self.people[i]
 
-            person_data = self.person_tracker.create_person_data(person.center[0], person.center[1], person.theta, person.a, person.b, "p"+ str(i))
-            people_data.people_location_2d.append(person_data)
+            # person_data = self.person_tracker.create_person_data(person.center[0], person.center[1], person.theta, person.a, person.b, "p"+ str(i))
+            person_data = self.person_tracker.create_person_data(person.center[0], 
+                                                                 person.center[1], 
+                                                                 person.theta, 
+                                                                 person.a, 
+                                                                 person.b, 
+                                                                 person.name)
+            people_data.people_location.append(person_data)
 
             # m = Marker(ns="person", id=i, type=3, action=0)
             # m.header = Header(stamp=rospy.Time.now(), frame_id="laser")
@@ -302,16 +369,10 @@ class Multitracker:
             # m.scale = Vector3(self.people[i].a*2,self.people[i].b*2,1) #scale, in meters
             # m.color = self.green #e_colors[i] #clean = red, infected = green
             
-            # markers.markers.append(m)
-        
-        #print len(new_ellipses)
-        # publisher.publish(markers)
+            # markers.markers.append(m)       
         
         self.people_locations_pub.publish(people_data)
 
-        # except Exception, e:
-        #     # raise e
-        #     pass
         
 class PersonTracker:
     def __init__(self, max_size=1.0, min_size=0.01, axis_a=0.9, center_a=0.1):
@@ -416,15 +477,19 @@ class PersonTracker:
         h.frame_id = self.scan_frame_id
         h.stamp = rospy.Time.now()
 
-        person = PersonLocation2D()
+        person = PersonLocation()
         person.header = h
         person.name = name
-        person.pose.x = pose_x
-        person.pose.y = pose_y
-        person.pose.theta = pose_theta
+        person.pose.position.x = pose_x
+        person.pose.position.y = pose_y
+        person.pose.position.z = 0.0
+        person.pose.orientation.x = 0.0
+        person.pose.orientation.y = 0.0
+        person.pose.orientation.z = 0.0
+        person.pose.orientation.w = 1.0
         person.ellipse_a = ellipse_a
         person.ellipse_b = ellipse_b
-        person.contamination = 0.05
+        person.ellipse_theta = pose_theta
 
         return person
 

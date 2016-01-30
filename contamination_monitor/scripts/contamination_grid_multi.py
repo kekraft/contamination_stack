@@ -15,13 +15,15 @@ import geometry_msgs.msg
 from std_msgs.msg import *
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from visualization_msgs.msg import Marker, MarkerArray
-from geometry_msgs.msg import Polygon, PolygonStamped
+from geometry_msgs.msg import Polygon, PolygonStamped, PointStamped
 import rospkg
 import tf
+from people_tracking.msg import PersonLocation, PersonLocationArray
 
 from tf.transformations import euler_from_quaternion
 from tf.transformations import quaternion_from_euler
 from tf.transformations import quaternion_inverse
+from tf import transformations
 
 import os
 import timeit
@@ -29,14 +31,19 @@ import timeit
 from contamination_monitor.srv import LoadContaminationGrid, SaveContaminationGrid, ResetContaminationGrid
 
 
+
 #This class converts ellipse data into an OccupancyGrid message
 class Transmission():
     BINARY = 0
     GAUSSIAN = 1
 
+### For this, we don't care so much about ppl, so much as moving objects, thus keep track of object id
+###   and contamination level
+
 class ContaminationGrid2D():
     NOT_CONTAMINATED = -1
     FULLY_CONTAMINATED = 100
+    UNKNOWN_CONTAMINATED = 50
     
     def __init__(self):
         self.contam_level = -1 # neg 1 corresponds to unkonwn in occupancy grid
@@ -62,22 +69,23 @@ class ContaminationGrid2D():
 
         metadata = rospy.wait_for_message("map_metadata", MapMetaData, 120) # this topic name should be passed in via parameter or config file
         self.init_empty_contam_map(metadata)
+        self.ogrid_frame_id = "map"
 
         # Gets the inverse transform just using a lookup...
         # This should be done with a config setting
         self.tf_listener = tf.TransformListener()
-        # (trans,rot) = self.tf_listener.lookupTransform("/laser", "/map", rospy.Time(0))
-        trans = [-92.100, -92.400, 0.3 ]
-        rot = [0.003, 0.004, 0.764, 0.645]
-        self.tfros = tf.TransformerROS()
-        self.laser_2_map_tf_mat = self.tfros.fromTranslationRotation(trans, rot)
-        print "TF MATRIX"
-        print self.laser_2_map_tf_mat
+        # # (trans,rot) = self.tf_listener.lookupTransform("/laser", "/map", rospy.Time(0))
+        # trans = [-92.100, -92.400, 0.3 ]
+        # rot = [0.003, 0.004, 0.764, 0.645]
+        # self.tfros = tf.TransformerROS()
+        # self.laser_2_map_tf_mat = self.tfros.fromTranslationRotation(trans, rot)
+        # print "TF MATRIX"
+        # print self.laser_2_map_tf_mat
         
         self.ppl_contam_levels = dict()
         self.layout = MultiArrayLayout([MultiArrayDimension(label="contam", stride=1)], 0)  
 
-        self.reset(True)
+        self.reset()
 
         # Setup default filepath 
         rospack = rospkg.RosPack()
@@ -100,73 +108,67 @@ class ContaminationGrid2D():
         self.occ_grid_pub = rospy.Publisher("contamination_grid", OccupancyGrid, queue_size=10)
         self.contam_pub = rospy.Publisher("contam_array", Float32MultiArray, queue_size=10)
         
-        self.tracking_marker_array_sub = rospy.Subscriber("multiperson_markers", MarkerArray, self.update_contam)
+        self.tracking_marker_array_sub = rospy.Subscriber("people_locations", PersonLocationArray, self.update_contam)
         # self.bot_marker_sub = rospy.Subscriber("cleaner_bot", Marker, self._clean_contam)
 
         self.add_contam_sub = rospy.Subscriber("added_contamination_polygon", PolygonStamped, self.add_contam_cb)
 
         # self.pub_map_continually()
-
-        # while True:
-        #     self.occ_grid_pub.publish(self.ogrid)
+        self.pub_contam_grid_now()
 
     def pub_map_continually(self):
         
-        r = rospy.Rate(1)
+        r = rospy.Rate(2)
 
         while True:
 
-            self.lock.acquire()
-            self.occ_grid_pub.publish(self.ogrid)
-            self.lock.release()
+            self.pub_contam_grid_now()
 
             r.sleep()
-
-    def add_contam_cb(self, msg):
-        ''' Makes these cells in the occ grid contaminated.
-        '''
-        lower_left = msg.polygon.points[0]
-        lower_left = [lower_left.x, lower_left.y]
-        upper_right = msg.polygon.points[2]
-        upper_right = [upper_right.x, upper_right.y]
-
-        print "Adding contam"
-        self._add_contam(lower_left, upper_right, intensity=self.FULLY_CONTAMINATED, print_stuff=True)
-        print "contam added"
-        
         
 
-    def update_contam(self, ellipse_array):     
+    def update_contam(self, person_array_msg):     
         # print "in update_contam"
         # start_time = timeit.default_timer()
 
-        for ellipse in ellipse_array.markers:
+        for person_loc in person_array_msg.people_location:
+            
+            person_id = person_loc.name
+            x = person_loc.pose.position.x
+            y = person_loc.pose.position.y
+            z = person_loc.pose.position.z
+            orientation = person_loc.pose.orientation
+            a = person_loc.ellipse_a
+            b = person_loc.ellipse_b
+            theta = person_loc.ellipse_theta
+            frame_id = person_loc.header.frame_id
 
             ## add in any new found people to the contam levels that are being tracked
-            if not self.ppl_contam_levels.keys() or ellipse.id not in self.ppl_contam_levels.keys():
-                self.ppl_contam_levels[ellipse.id] = int(ellipse.text)
+            if not self.ppl_contam_levels.keys() or person_id not in self.ppl_contam_levels.keys():
+                self.ppl_contam_levels[person_id] = self.UNKNOWN_CONTAMINATED
 
             try:
-                ellipse_data = self._get_ellipse_data(ellipse) #convert marker to points
+                # ellipse_data = self.tf_person_2_contam_grid(ellipse) #convert marker to points 
+                ellipse_data = self.tf_person_2_contam_grid(x, y, theta, orientation, frame_id) # convert person data to workable ellipse 
                 
                 if ellipse_data is not None:
 
-                    (center, a, b, theta) = ellipse_data
+                    (center, theta) = ellipse_data
+                    # (center, a, b, theta) = ellipse_data
                     # print "Center ", center
                     # print "a ", a
                     # print "b ", b
                     # print "theta ", theta
-                    # self.tf_laser_to_contam_grid(center)
 
                     with self.lock:
 
                         if self.transmission_method == Transmission.BINARY:
                             
                             # Update for spreading person contamination to environment
-                            contam_grid_cells = self.binary_person_2_env(ellipse.id, center, a, b, theta)
+                            contam_grid_cells = self.binary_person_2_env(person_id, center, a, b, theta)
 
                             # Update for spreading environment contamination to person
-                            self.binary_env_2_person(ellipse.id, center, a, b, theta)
+                            self.binary_env_2_person(person_id, center, a, b, theta)
 
                             # update occ grid and contamination after person spread
                             # print "Num grid cells: ", len(contam_grid_cells)
@@ -178,9 +180,7 @@ class ContaminationGrid2D():
                 # Goofy ellipse, pass on this
                 pass
                 
-        
-        self.ogrid.header = Header(stamp=rospy.Time.now(),frame_id = "map")
-        self.occ_grid_pub.publish(self.ogrid)
+        self.pub_contam_grid_now()
 
 
         # code you want to evaluate
@@ -274,14 +274,16 @@ class ContaminationGrid2D():
                 self.ppl_contam_levels[ellipse_id] = self.FULLY_CONTAMINATED
                 return      
 
-    def reset(self, run):
+    def reset(self):
         '''
-        Loads the config file for the occupancy grid and sets each grid to uncontaminated.
+        Loads the config file for the occupancy grid.
+        Sets each grid cell.
+        Clears prior knowledge of the peoeple.
         '''
         with self.lock:
             self.contam_level = -1
             self.contam = {}
-            self.ogrid.data = [0 for i in xrange(self.ogrid.info.width * self.ogrid.info.height)]
+            self.ogrid.data = [self.NOT_CONTAMINATED for i in xrange(self.ogrid.info.width * self.ogrid.info.height)]
             #print sys.argv
             with open(sys.argv[1]) as f:
                 for k, v in yaml.load(f.read()).iteritems():
@@ -362,12 +364,20 @@ class ContaminationGrid2D():
                 
         
     #turn ellipse into points
-    def _get_ellipse_data(self,ellipse):
+    def tf_person_2_contam_grid(self,x, y, theta, orientation, frame_id):
         #transform from ellipse frame to map frame and get ellipse data
         #FORMULA ASSUMES LASER AND MAP ARE ROTATED ONLY AROUND Z AXIS
         try:
-            (trans,rot) = self.tf_listener.lookupTransform('/map', '/' + ellipse.header.frame_id, rospy.Time(0))
+            self.tf_listener.waitForTransform(self.ogrid_frame_id, frame_id, rospy.Time(0), rospy.Duration(0.5))
+            (trans,rot) = self.tf_listener.lookupTransform(self.ogrid_frame_id, '/' + frame_id, rospy.Time(0))
+        
+            angle = acos(rot[3]) * 2
+            center = (x*cos(angle) - y*sin(angle) + trans[0], x*sin(angle) + y*cos(angle) + trans[1])            
+            q = orientation
+            w = (q.w*rot[3] - q.x*rot[0] - q.y*rot[1] - q.z*rot[2])
+            theta = acos(w)*2
             
+            '''
             x = ellipse.pose.position.x
             y = ellipse.pose.position.y
             angle = acos(rot[3]) * 2
@@ -378,11 +388,13 @@ class ContaminationGrid2D():
             q = ellipse.pose.orientation
             w = (q.w*rot[3] - q.x*rot[0] - q.y*rot[1] - q.z*rot[2])
             theta = acos(w)*2
+            '''
             
-            return center, a, b, theta
+            return center, theta
 
         except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
             print "no tf found"
+            return None
 
     #return distance from point to ellipse
     def _e_dist(self, point, center, a, b, theta):
@@ -395,7 +407,7 @@ class ContaminationGrid2D():
             in the area. This method depends on modeling the cleaning surface of the bot as a 
             an ellipse. 
         '''
-        (center, a, b, theta) = self._get_ellipse_data(ellipse)
+        (center, a, b, theta) = self.tf_person_2_contam_grid(ellipse)
         #print center, a, b, theta
         for x in np.arange(center[0] - a, center[0] + a, self.step):
             for y in np.arange(center[1] - a, center[1] + a, self.step):
@@ -412,8 +424,7 @@ class ContaminationGrid2D():
                         if index in self.contam: del self.contam[index]
                     #print self.ogrid.data[index]
         
-        self.ogrid.header = Header(stamp=rospy.Time.now(), frame_id = "map")
-        self.occ_grid_pub.publish(self.ogrid)
+        self.pub_contam_grid_now()
 
 
     def save_contam_grid(self, srv_cmd):
@@ -448,6 +459,7 @@ class ContaminationGrid2D():
             self.lock.release()     
 
         print "Saved and released"
+        self.pub_contam_grid_now()
         return is_written
 
     def load_contam_grid(self, srv_cmd):
@@ -487,6 +499,7 @@ class ContaminationGrid2D():
 
                 self.lock.release()
                 is_loaded = True
+                self.pub_contam_grid_now()
 
         print "Is loaded: ", is_loaded
         
@@ -503,19 +516,65 @@ class ContaminationGrid2D():
         if srv_cmd.reset_contam_grid == True:
             self.reset()
             is_reset = True
+            self.pub_contam_grid_now()
 
-        print "Reset? ", is_loaded
+        print "Reset? ", is_reset
         
         return is_reset
 
+    def add_contam_cb(self, msg):
+        ''' Makes these cells in the occ grid contaminated.
+        '''
+        ## Make sure the points are in the correct frame
+        frame_id = msg.header.frame_id
+        tf_mat = self.get_tf_mat_2_contam_grid(frame_id)
+
+        ## Determine lower left and upper right since adding as a square currently
+        lower_left = None
+        upper_right = None
+        for pt in msg.polygon.points:
+            xyz = self.tf_pt_2_contam_grid(pt.x, pt.y, pt.z, frame_id, tf_mat)
+
+            if (lower_left is None) or \
+               (xyz[0] <= lower_left[0] and xyz[1] <= lower_left[1]):
+                lower_left = xyz
+            elif (upper_right is None) or \
+                        (xyz[0] >= upper_right[0] and xyz[1] >= upper_right[1]):
+                upper_right = xyz       
+
+        print "Adding contam"
+        self._add_contam(lower_left, upper_right, intensity=self.FULLY_CONTAMINATED, print_stuff=True)
+        print "contam added"
+
+        self.pub_contam_grid_now()
 
 
-    def tf_laser_to_contam_grid(self, pt):
-        point = np.array[[pt[0],pt[1],0]]
-        print "ORIG PNT: ", point
-        tfd_point = np.linalg.matmul(point, self.laser_2_map_tf_mat)
-        print "TFD POINT: ", tfd_point
-        return tfd_point
+    def pub_contam_grid_now(self):
+        with self.lock:
+            self.ogrid.header = Header(stamp=rospy.Time.now(),frame_id = self.ogrid_frame_id)
+            self.occ_grid_pub.publish(self.ogrid)
+
+
+    def tf_pt_2_contam_grid(self, x, y, z, frame_id, tf_mat = None):
+        point = np.array([x, y, z, 0])
+
+        if tf_mat is None:
+            tf_mat = self.get_tf_mat_2_contam_grid(frame_id)
+
+        xyz = tuple(np.dot(tf_mat, np.array([x, y, z, 1.0])))[:3]
+      
+        return xyz
+
+    def get_tf_mat_2_contam_grid(self, frame_id):
+
+        self.tf_listener = tf.TransformListener()
+        self.tf_listener.waitForTransform(frame_id, self.ogrid_frame_id, rospy.Time(0), rospy.Duration(4.0))
+        (trans,rot) = self.tf_listener.lookupTransform(self.ogrid_frame_id, frame_id, rospy.Time(0))
+
+        self.tfros = tf.TransformerROS()
+        tf_mat = self.tfros.fromTranslationRotation(trans, rot)  
+
+        return tf_mat        
 
 
 
@@ -525,6 +584,7 @@ if __name__ == '__main__':
     rospy.init_node('contamination_grid')
 
     grid = ContaminationGrid2D()
+    # grid.pub_map_continually()
    
     rospy.spin()
 
@@ -545,7 +605,7 @@ if __name__ == '__main__':
                 self.ppl_contam_levels[ellipse.id] = int(ellipse.text)
 
 
-            ellipse_data = self._get_ellipse_data(ellipse) #convert marker to points
+            ellipse_data = self.tf_person_2_contam_grid(ellipse) #convert marker to points
             
             if ellipse_data is not None:
 

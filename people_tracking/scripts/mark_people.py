@@ -20,9 +20,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from math import sin,cos,atan2,pi,sqrt
 
 from ellipse2d import Ellipse2d
-from contamination_monitor.msg import PersonLocation2D, PersonLocation2DArray
-
-import hashlib
+from people_tracking.msg import PersonLocation, PersonLocationArray
 
 class PersonMarker():
     def __init__(self, scale_factor=0.5, person_height=0.5, multi_case = False):
@@ -32,12 +30,12 @@ class PersonMarker():
         self.multi_case = multi_case
 
         if multi_case:
-            self.people_locations_sub = rospy.Subscriber("people_locations", PersonLocation2DArray, self.people_locations_cb)        
+            self.people_locations_sub = rospy.Subscriber("people_locations", PersonLocationArray, self.people_locations_cb)        
             self.people_marker_pub = rospy.Publisher("multiperson_markers", MarkerArray, queue_size=10)
             self.people_label_marker_pub = rospy.Publisher("multperson_label_markers", MarkerArray, queue_size=10)
 
         else:
-            self.person_location_sub = rospy.Subscriber('persons_location', PersonLocation2D, self.person_locations_cb)
+            self.person_location_sub = rospy.Subscriber('persons_location', PersonLocation, self.person_locations_cb)
             self.person_marker_pub = rospy.Publisher("persons_marker", Marker, queue_size=10)
 
         
@@ -54,7 +52,7 @@ class PersonMarker():
         marker_label_array = MarkerArray()
         marker_label_array.markers = []
 
-        for person in data.people_location_2d:
+        for person in data.people_location:
             ## in future have a heat map color marker
             # color = self.contamination_color(person.contamination)
             color = ColorRGBA(0.2, 0.5, 0.7, 1.0)
@@ -112,15 +110,18 @@ class PersonMarker():
         print "Char int binary) ", bin(char_int)
 
         # mark.id = int(char_int / 10000)
-        mark.id = char_int
+        print "p name ", int(float(person.name))
+        mark.id = int(float(person.name)) #char_int
+        print "mark id" , mark.id
         mark.type = Marker.CYLINDER # Marker.TEXT_VIEW_FACING 
         mark.action = 0
         mark.scale = Vector3(person.ellipse_a * self.scale_factor, person.ellipse_b * self.scale_factor, 1) 
         mark.color = color 
+        mark.lifetime = rospy.Duration(0.5,0)
         print "person name: ", person.name
         mark.text = str(1)
 
-        pose = Pose(Point(person.pose.x, person.pose.y, self.person_height), Quaternion(0.0,0.0,1.0,cos(person.pose.theta/2)))
+        pose = Pose(Point(person.pose.position.x, person.pose.position.y, self.person_height), Quaternion(0.0,0.0,1.0,cos(person.pose.position.z/2)))
         mark.pose = pose
 
         return mark
@@ -147,15 +148,16 @@ class PersonMarker():
         print "Char int binary) ", bin(char_int)
 
         # mark.id = int(char_int / 10000)
-        mark.id = char_int
+        mark.id = int(float(person.name)) #char_int
         mark.type = Marker.TEXT_VIEW_FACING 
         mark.action = 0
         mark.scale = Vector3(self.scale_factor * 0.5, self.scale_factor * 0.5, 1) 
         mark.color = color 
+        mark.lifetime = rospy.Duration(0.5,0)
         print "person name: ", person.name
         mark.text = person.name
 
-        pose = Pose(Point(person.pose.x + 0.75, person.pose.y + 0.5, self.person_height + 0.75), Quaternion(0.0,0.0,1.0,cos(person.pose.theta/2)))
+        pose = Pose(Point(person.pose.position.x + 0.75, person.pose.position.y + 0.5, self.person_height + 0.75), Quaternion(0.0,0.0,1.0,cos(person.pose.position.z/2)))
         mark.pose = pose
 
         return mark

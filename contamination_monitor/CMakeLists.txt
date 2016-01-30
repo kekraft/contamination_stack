@@ -66,11 +66,9 @@ qt4_wrap_cpp(MOC_FILES
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-add_message_files(
-  FILES
-  PersonLocation2D.msg
-  PersonLocation2DArray.msg
-)
+#add_message_files(
+# FILES
+#)
 
 ## Generate services in the 'srv' folder
 add_service_files(
