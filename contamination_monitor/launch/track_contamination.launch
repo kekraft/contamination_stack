@@ -14,18 +14,16 @@
     </include>
 
     <!-- Place markers for people's locations -->
-   <!-- 
-   <node pkg="people_tracking" name="mark_people_contamination" type="mark_people.py" output="$(arg output_loc)">
+   <!-- <node pkg="people_tracking" name="mark_people_contamination" type="mark_people.py" output="$(arg output_loc)">
         <remap from="multiperson_markers" to="person_contam_markers"/>
         <remap from="multperson_label_markers" to="person_contam_labels"/>
         <param name="scale_factor" value="2.0"/>
         <param name="person_height" value="0.5"/>
-    </node> 
-    -->
+    </node>  -->
     
     <!--Launch Contamination Node-->
-    <!-- <node pkg="contamination_monitor" name="contamination_node" type="contamination_grid_multi.py" args="$(arg contam_init)" output="screen"/> 
- -->
+    <node pkg="contamination_monitor" name="contamination_grid_monitor" type="contamination_grid_multi.py" args="$(arg contam_init)" output="screen"/>
+ 
     <!-- Visualize in rviz -->
     <group if="$(arg start_rviz)">
         <node name="contam_view_rviz" pkg="rviz" type="rviz" required="false" 

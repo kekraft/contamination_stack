@@ -55,6 +55,8 @@ class ContaminationGrid2D():
         self.step = 0
         self.offset = (0,0)
 
+        self.objects_contam_level = {} # stores tracked objects contamination level, k=ob_id, v=contam level
+
         #Efficiency of cleaning robot
         self.power = 0.0
         #Contaminant picked up from environment
@@ -67,7 +69,7 @@ class ContaminationGrid2D():
         #set of coordinates with contamination
         self.contam = {}
 
-        metadata = rospy.wait_for_message("map_metadata", MapMetaData, 120) # this topic name should be passed in via parameter or config file
+        metadata = rospy.wait_for_message("map_metadata", MapMetaData) # this topic name should be passed in via parameter or config file
         self.init_empty_contam_map(metadata)
         self.ogrid_frame_id = "map"
 
@@ -105,7 +107,7 @@ class ContaminationGrid2D():
         self.save_contam_grid_service = rospy.Service('contamination_monitor/save_contam_grid', SaveContaminationGrid, self.save_contam_grid)
         self.reset_contam_grid_service = rospy.Service('contamination_monitor/reset_contam_grid', ResetContaminationGrid, self.reset_contam_grid)
          
-        self.occ_grid_pub = rospy.Publisher("contamination_grid", OccupancyGrid, queue_size=10)
+        self.occ_grid_pub = rospy.Publisher("contamination_grid", OccupancyGrid, queue_size=10, latch = True)
         self.contam_pub = rospy.Publisher("contam_array", Float32MultiArray, queue_size=10)
         
         self.tracking_marker_array_sub = rospy.Subscriber("people_locations", PersonLocationArray, self.update_contam)
@@ -144,7 +146,8 @@ class ContaminationGrid2D():
             frame_id = person_loc.header.frame_id
 
             ## add in any new found people to the contam levels that are being tracked
-            if not self.ppl_contam_levels.keys() or person_id not in self.ppl_contam_levels.keys():
+            # if not self.ppl_contam_levels.keys() or person_id not in self.ppl_contam_levels.keys():
+            if not self.ppl_contam_levels.keys() or person_id not in self.ppl_contam_levels:
                 self.ppl_contam_levels[person_id] = self.UNKNOWN_CONTAMINATED
 
             try:
@@ -176,11 +179,13 @@ class ContaminationGrid2D():
 
                         elif self.transmission_method == Transmission.GAUSSIAN:
                             pass
+
             except ValueError:
                 # Goofy ellipse, pass on this
                 pass
                 
         self.pub_contam_grid_now()
+        self.pub_people_markers(person_array_msg)
 
 
         # code you want to evaluate
@@ -200,26 +205,44 @@ class ContaminationGrid2D():
 
         current_per_contam_level = self.ppl_contam_levels.get(ellipse_id)
 
+
         # print "Ellipses:"
         # print self.ppl_contam_levels
         
-        # if current_per_contam_level < self.FULLY_CONTAMINATED:
-        #     # no contamination to spread
-        #     # return grid_copy, contam_locs
-        #     print "not contaminated"
-        #     return contam_indices
+        if current_per_contam_level < self.FULLY_CONTAMINATED:
+            # no contamination to spread
+            # return grid_copy, contam_locs
+            return contam_indices
 
-        #outline square that fits ellipse and then find points within ellipse and infect those pts on the grid
-        for x in np.arange(ellipse_center[0]-ellipse_a, ellipse_center[0]+ellipse_a, self.step):            
-            for y in np.arange(ellipse_center[1]-ellipse_a, ellipse_center[1]+ellipse_a, self.step):
+        else:
+            #outline square that fits ellipse and then find points within ellipse and infect those pts on the grid
+            for x in np.arange(ellipse_center[0]-ellipse_a, ellipse_center[0]+ellipse_a, self.step):            
+                for y in np.arange(ellipse_center[1]-ellipse_a, ellipse_center[1]+ellipse_a, self.step):
 
-                # distance = self._e_dist((x, y), ellipse_center, ellipse_a, ellipse_b, ellipse_theta)
-                index = self._xy_to_cell((x, y))                
-                contam_indices.append(index)
+                    # distance = self._e_dist((x, y), ellipse_center, ellipse_a, ellipse_b, ellipse_theta)
+                    index = self._xy_to_cell((x, y))                
+                    contam_indices.append(index)
                 
         
-        return contam_indices
+        return contam_indices    
 
+
+    def binary_env_2_person(self, ellipse_id, ellipse_center, ellipse_a, ellipse_b, ellipse_theta):
+        #     # if person is in thresholded area of contamination, set them to full contaminated
+        current_per_contam_level = self.ppl_contam_levels.get(ellipse_id)
+
+        if current_per_contam_level == self.FULLY_CONTAMINATED:
+            # person already contaminated, return
+            return
+
+        ## Loop through thresholded area of where person is standing. 
+        ## If any of these areas are contaminated, mark the person as contaminated
+        for x in np.arange(ellipse_center[0]-ellipse_a, ellipse_center[0]+ellipse_a, self.step):            
+            for y in np.arange(ellipse_center[1]-ellipse_a, ellipse_center[1]+ellipse_a, self.step):
+                    index = self._xy_to_cell((x, y))                
+                    if self.ogrid.data[index] > self.NOT_CONTAMINATED:
+                        self.ppl_contam_levels[ellipse_id] = self.FULLY_CONTAMINATED
+                        return
 
     def gauss_person_2_env(self, ellipse_center, ellipse_a, ellipse_b, ellipse_theta):
         ''' This method spreads contamination from the person to the environment,
@@ -252,27 +275,6 @@ class ContaminationGrid2D():
                                 self.contam[index]=(x, y)
                 
                 self.ppl_contam_levels[ellipse.id] *= 1-self.transfer
-
-
-    def binary_env_2_person(self, ellipse_id, ellipse_center, ellipse_a, ellipse_b, ellipse_theta):
-        #     # if person is in area increase relative contamination
-        #     #print ellipse.id, v, center
-        #     if distance < self.dist_thresh and self.ppl_contam_levels[ellipse.id] < self.ogrid.data[k]:
-        #         self.ppl_contam_levels[ellipse.id] = self.ogrid.data[k] * self.infectivity
-        #         #print ellipse.id, self.ppl_contam_levels[ellipse.id]
-        #         self.ogrid.data[k] = int(self.ogrid.data[k] * (1-0.5 * self.infectivity))
-        current_per_contam_level = self.ppl_contam_levels.get(ellipse_id)
-
-        if current_per_contam_level == self.FULLY_CONTAMINATED:
-            # person already contaminated, return
-            return
-
-        for k, v in self.contam.iteritems():
-            distance = self._e_dist(v, ellipse_center, ellipse_a, ellipse_b, ellipse_theta)
-
-            if distance < self.dist_thresh and current_per_contam_level < self.ogrid.data[k]:
-                self.ppl_contam_levels[ellipse_id] = self.FULLY_CONTAMINATED
-                return      
 
     def reset(self):
         '''
@@ -447,7 +449,7 @@ class ContaminationGrid2D():
                 )
 
             #### get grid data as numpy and save as seperate file       
-            with open(fp + ".yaml", 'w') as outfile:
+            with open(fp + ".yaml", 'w+') as outfile:
                 print "Saving to FP ", fp
                 outfile.write( yaml.dump(data, default_flow_style=False) )
                 
@@ -575,6 +577,23 @@ class ContaminationGrid2D():
         tf_mat = self.tfros.fromTranslationRotation(trans, rot)  
 
         return tf_mat        
+
+    def pub_people_markers(self, person_array_msg):
+        for person_loc in person_array_msg.people_location:
+            
+            person_id = person_loc.name
+            x = person_loc.pose.position.x
+            y = person_loc.pose.position.y
+            z = person_loc.pose.position.z
+            orientation = person_loc.pose.orientation
+            a = person_loc.ellipse_a
+            b = person_loc.ellipse_b
+            theta = person_loc.ellipse_theta
+            frame_id = person_loc.header.frame_id
+
+            ### it would be great here to call person marker to create the new marker...
+            ## without starting a new node.
+            ## there should be a way to do that in mark_people to satisfy both things here
 
 
 

@@ -23,20 +23,22 @@ from ellipse2d import Ellipse2d
 from people_tracking.msg import PersonLocation, PersonLocationArray
 
 class PersonMarker():
-    def __init__(self, scale_factor=0.5, person_height=0.5, multi_case = False):
+    def __init__(self, scale_factor=2, person_height=1.75, laser_height = 1.2192):
         self.scale_factor = scale_factor #scale, in meters
         self.person_height = person_height
+        self.laser_height = 2
 
-        self.multi_case = multi_case
+        
 
-        if multi_case:
-            self.people_locations_sub = rospy.Subscriber("people_locations", PersonLocationArray, self.people_locations_cb)        
-            self.people_marker_pub = rospy.Publisher("multiperson_markers", MarkerArray, queue_size=10)
-            self.people_label_marker_pub = rospy.Publisher("multperson_label_markers", MarkerArray, queue_size=10)
+        self.people_locations_sub = rospy.Subscriber("people_locations", PersonLocationArray, self.people_locations_cb)        
+        self.people_marker_pub = rospy.Publisher("multiperson_markers", MarkerArray, queue_size=10)
+        self.people_label_marker_pub = rospy.Publisher("multperson_label_markers", MarkerArray, queue_size=10)
+        
+        self.person_locs = dict() # dict k = ppls names, v = lists of position tuples
+        self.people_line_loc_pub = rospy.Publisher("multiperson_line", Marker, queue_size=10)
+        self.people_locations_sub = rospy.Subscriber("people_locations", PersonLocationArray, self.people_locations_line_cb)
 
-        else:
-            self.person_location_sub = rospy.Subscriber('persons_location', PersonLocation, self.person_locations_cb)
-            self.person_marker_pub = rospy.Publisher("persons_marker", Marker, queue_size=10)
+
 
         
     def people_locations_cb(self, data):
@@ -57,7 +59,7 @@ class PersonMarker():
             # color = self.contamination_color(person.contamination)
             color = ColorRGBA(0.2, 0.5, 0.7, 1.0)
 
-            marker = self.create_person_marker(person, color)
+            marker = self.create_cylindrical_person_marker(person, color)
             marker_label = self.create_person_label_marker(person, color)
 
             marker_array.markers.append(marker)
@@ -74,7 +76,7 @@ class PersonMarker():
         # color = self.contamination_color(data.contamination)
         color = ColorRGBA(0.2, 0.5, 0.7, 1.0)
 
-        marker = self.create_person_marker(data, color)
+        marker = self.create_cylindrical_person_marker(data, color)
         self.person_marker_pub.publish(marker)
 
     # def contamination_color(self, contam_belief):
@@ -88,7 +90,7 @@ class PersonMarker():
         
     #     return color
     
-    def create_person_marker(self, person, color):
+    def create_cylindrical_person_marker(self, person, color):
         h = Header()
         h.frame_id = person.header.frame_id #tie marker visualization to laser it comes from
         h.stamp = rospy.Time.now() # Note you need to call rospy.init_node() before this will work
@@ -121,8 +123,32 @@ class PersonMarker():
         print "person name: ", person.name
         mark.text = str(1)
 
-        pose = Pose(Point(person.pose.position.x, person.pose.position.y, self.person_height), Quaternion(0.0,0.0,1.0,cos(person.pose.position.z/2)))
+        pose = Pose(Point(person.pose.position.x, person.pose.position.y, self.person_height - self.laser_height), Quaternion(0.0,0.0,1.0,cos(person.pose.position.z/2)))
         mark.pose = pose
+
+        return mark
+
+    @staticmethod
+    def create_line_list_marker(person, color, line_points):
+        h = Header()
+        h.frame_id = person.header.frame_id #tie marker visualization to laser it comes from
+        h.stamp = rospy.Time.now() # Note you need to call rospy.init_node() before this will work
+        
+        #create marker:person_marker, modify a red cylinder, last indefinitely
+        mark = Marker()
+        mark.header = h
+        mark.ns = "person_marker"
+        mark.id = int(float(person.name)) #char_int
+        mark.type = Marker.LINE_STRIP# Marker.TEXT_VIEW_FACING 
+        mark.action = 0
+        mark.scale.x = 0.2 
+        mark.color = color
+        # mark.lifetime = rospy.Duration(0.5,0)
+        print "person name: ", person.name
+        mark.text = str(1)
+
+        points = [Point(x[0], x[1], x[2]) for x in line_points]
+        mark.points = points
 
         return mark
 
@@ -162,13 +188,38 @@ class PersonMarker():
 
         return mark
 
+    def people_locations_line_cb(self, data):
+        ## creates a line marker for person locatoin
+
+
+        for person in data.people_location:
+            ## in future have a heat map color marker
+            # color = self.contamination_color(person.contamination)
+            color = ColorRGBA(0.2, 0.5, 0.7, 1.0)
+            person_loc = (person.pose.position.x, person.pose.position.y, person.pose.position.z)
+            person.name 
+
+            if person.name in self.person_locs:
+                # Add location to that person's location list
+                self.person_locs[person.name].append(person_loc) 
+            else:
+                # Add person into dictionary and add the loction as the first item in their list
+                self.person_locs[person.name] = [person_loc]
+
+            line_list_marker = self.create_line_list_marker(person, color, self.person_locs[person.name])
+            self.people_line_loc_pub.publish(line_list_marker)
+            
+        
+
 if __name__ == '__main__':
     rospy.init_node("person_marker_creator")
 
-    scale = rospy.get_param('~scale_factor')
-    person_height = rospy.get_param('~person_height')
-    multiperson_case = rospy.get_param('~multiperson') # true == multiperson tracking, false == single person tracking
+    try:
+        scale_factor = rospy.get_param('~scale_factor')
+        person_height = rospy.get_param('~person_height')
 
-    person_marker = PersonMarker(scale, person_height, multiperson_case)
+        person_marker = PersonMarker(scale_factor, person_height)
+    except KeyError:
+        person_marker = PersonMarker()
     
     rospy.spin()

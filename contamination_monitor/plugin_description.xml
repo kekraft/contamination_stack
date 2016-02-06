@@ -24,4 +24,12 @@
     </description>
   </class>
 
+    <class name="contamination_monitor/RemoveContamination"
+         type="contamination_monitor::RemoveContaminationTool"
+         base_class_type="rviz::Tool">
+    <description>
+      Tool removing contamination from contamination map.
+    </description>
+  </class>
+
 </library>

@@ -34,6 +34,7 @@ qt4_wrap_cpp(MOC_FILES
   src/draw_polygon_tool.h
   src/draw_rectangle_tool.h
   src/add_contamination_tool.h
+  src/remove_contamination_tool.h
 )
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -136,6 +137,7 @@ set(SOURCE_FILES
   src/draw_polygon_tool.cpp 
   src/draw_rectangle_tool.cpp
   src/add_contamination_tool.cpp
+  src/remove_contamination_tool.cpp
   ${MOC_FILES}
 )
 

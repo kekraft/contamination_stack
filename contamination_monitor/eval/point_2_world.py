@@ -7,6 +7,7 @@ import numpy as np
 
 import rospy
 from sensor_msgs.msg import Image, CameraInfo
+from nav_msgs.msg import OccupancyGrid, MapMetaData
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import Point, PointStamped
 from image_geometry import PinholeCameraModel
@@ -16,53 +17,8 @@ from std_msgs.msg import *
 
 import sys
 import cv2
-
-""" cv_bridge_demo.py - Version 0.1 2011-05-29
-
-    A ROS-to-OpenCV node that uses cv_bridge to map a ROS image topic and optionally a ROS
-    depth image topic to the equivalent OpenCV image stream(s).
-    
-    Created for the Pi Robot Project: http://www.pirobot.org
-    Copyright (c) 2011 Patrick Goebel.  All rights reserved.
-
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-    
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details at:
-    
-    http://www.gnu.org/licenses/gpl.html
-
-    Some code taken from the above.
-      
-"""
-
-
-# construct the argument parse and parse the arguments
-# ap = argparse.ArgumentParser()
-# ap.add_argument("-f", "--first", required=True,
-#   help="path to the first image")
-# ap.add_argument("-s", "--second", required=True,
-#   help="path to the second image")
-# args = vars(ap.parse_args())
-
-# # load the two images and resize them to have a width of 400 pixels
-# # (for faster processing)
-# imageA = cv2.imread(args["first"])
-# imageA = imutils.resize(imageA, width=400)
- 
-
- 
-# show the images
-# cv2.imshow("Image A", imageA)
-# cv2.imshow("Image B", imageB)
-# cv2.imshow("Keypoint Matches", vis)
-# cv2.imshow("Result", result)
-# cv2.waitKey(0)
+import yaml
+import array
 
 class PixelConversion():
     def __init__(self):
@@ -264,7 +220,8 @@ class PixelConversion():
             if self.has_pic:
                 cv2.imshow("img", self.img)
 
-    def get_plane_normal(self, p1, p2, p3):
+    @staticmethod
+    def get_plane_normal(p1, p2, p3):
         ''' Computes the normal vector for the plane defined by the 3 given points.
         '''
         # p1 = np.array([1, 2, 3])
@@ -282,7 +239,8 @@ class PixelConversion():
         norm = np.cross(v1, v2)
         return norm
 
-    def get_line_normal(self, p1, p2):
+    @staticmethod
+    def get_line_normal(p1, p2):
         ''' Computes the normal vector for the plane defined by the 2 given points. 
         '''
         # dx=x2-x1 and dy=y2-y1, then the normals are (-dy, dx) and (dy, -dx)
@@ -291,7 +249,8 @@ class PixelConversion():
         ln = p2 - p1
         return ln
 
-    def line_plane_intersection(self, lp, ln, pp, pn):
+    @staticmethod
+    def line_plane_intersection(lp, ln, pp, pn):
         '''
         computes the point intersection of the line and plane from the point/normal pairs
         lp,ln - parameterized form of the line (point, dir) p = s*ln + lp
@@ -319,7 +278,8 @@ class PixelConversion():
 
         return (lp + (num/dem)*ln)
 
-    def create_line_marker(self, p1, p2, frame_id):
+    @staticmethod
+    def create_line_marker(p1, p2, frame_id):
         h = Header()
         h.frame_id = frame_id #tie marker visualization to laser it comes from
         h.stamp = rospy.Time.now() # Note you need to call rospy.init_node() before this will work
@@ -346,7 +306,8 @@ class PixelConversion():
 
         return mark
 
-    def create_point_marker(self, p1, frame_id):
+    @staticmethod
+    def create_point_marker(p1, frame_id):
         h = Header()
         h.frame_id = frame_id #tie marker visualization to laser it comes from
         h.stamp = rospy.Time.now() # Note you need to call rospy.init_node() before this will work
@@ -371,7 +332,8 @@ class PixelConversion():
 
         return mark
 
-    def create_points_marker(self, points, frame_id):
+    @staticmethod
+    def create_points_marker(points, frame_id):
         h = Header()
         h.frame_id = frame_id #tie marker visualization to laser it comes from
         h.stamp = rospy.Time.now() # Note you need to call rospy.init_node() before this will work
@@ -394,24 +356,443 @@ class PixelConversion():
 
         return mark
 
-    def get_matrixes(self, camera_frame, other_frame):
-        self.tf_listener.waitForTransform(camera_frame, other_frame, rospy.Time(0), rospy.Duration(0.5))
-        (trans,rot) = self.tf_listener.lookupTransform(camera_frame, other_frame, rospy.Time(0))
-        self.tfros = tf.TransformerROS()
-        tf_mat = self.tfros.fromTranslationRotation(trans, rot)
+    @staticmethod
+    def get_matrices(camera_frame, other_frame):
+        print "Getting matrices"
+        tf_listener = tf.TransformListener()
+        tfros = tf.TransformerROS()
+
+        tf_listener.waitForTransform(camera_frame, other_frame, rospy.Time(0), rospy.Duration(2))
+        (trans,rot) = tf_listener.lookupTransform(camera_frame, other_frame, rospy.Time(0))
+        tf_mat = tfros.fromTranslationRotation(trans, rot)
 
 
-        self.tf_listener.waitForTransform(other_frame, camera_frame, rospy.Time(0), rospy.Duration(0.5))
-        (inv_trans,inv_rot) = self.tf_listener.lookupTransform(other_frame, camera_frame, rospy.Time(0))
-        self.tfros = tf.TransformerROS()
-        inv_tf_mat = self.tfros.fromTranslationRotation(inv_trans, inv_rot)
+        tf_listener.waitForTransform(other_frame, camera_frame, rospy.Time(0), rospy.Duration(2))
+        (inv_trans,inv_rot) = tf_listener.lookupTransform(other_frame, camera_frame, rospy.Time(0))
+        inv_tf_mat = tfros.fromTranslationRotation(inv_trans, inv_rot)
 
         return tf_mat, inv_tf_mat
+
+    @staticmethod
+    def store_all_image_info():
+        image_topics = [("/image_raw", "/camera_info"), 
+                        ("/wall_camera/image_raw", "/wall_camera/camera_info"), 
+                        ("/door_camera/image_raw", "door_camera/camera_info")]
+
+        for topic, info in image_topics:
+
+            ## could have used wait for msg here
+            rospy.Subscriber(info, CameraInfo, PixelConversion.store_image_info_cb, topic, queue_size = 1)
+            print "subscriber setup"
+
+    @staticmethod
+    def store_image_info_cb(msg, topic_name):
+        ''' Stores the topic name, pinhole camera model object, and
+            matrices from the camera to the map in pickle fiels.
+        '''
+        import pickle
+        import os
+        import rospkg
+
+        print "Storing info"
+
+        pinhole_camera_model = PinholeCameraModel()
+        pinhole_camera_model.fromCameraInfo(msg)
+
+        matrices = PixelConversion.get_matrices(msg.header.frame_id, "/map")
+
+        
+
+        filename = topic_name.replace("/", "_") + ".pickle"
+
+        rospack = rospkg.RosPack()
+        pkg_path = rospack.get_path('contamination_monitor')
+        directory = os.path.join(pkg_path, "eval", "camera_map_tfs") 
+
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        
+        filepath = os.path.join(directory, filename)
+
+        
+        
+        with open(filepath, 'wb+') as f:
+            pickle.dump(topic_name, f)
+            pickle.dump(pinhole_camera_model, f)
+            pickle.dump(matrices, f)
+
+            print "pickle dumped to ", filepath
+
+    
+    @staticmethod
+    def load_all_image_info():
+        import pickle
+        import os
+        import rospkg
+
+        image_info = dict()
+
+        image_topics = [("/image_raw", "/camera_info"), 
+                        ("/wall_camera/image_raw", "/wall_camera/camera_info"), 
+                        ("/door_camera/image_raw", "door_camera/camera_info")]
+
+        rospack = rospkg.RosPack()
+        pkg_path = rospack.get_path('contamination_monitor')
+        directory = os.path.join(pkg_path, "eval", "camera_map_tfs") 
+
+        for topic, info in image_topics:
+            filename = topic.replace("/", "_") + ".pickle"
+
+            rospack = rospkg.RosPack()
+            pkg_path = rospack.get_path('contamination_monitor')
+            directory = os.path.join(pkg_path, "eval", "camera_map_tfs") 
+
+            filepath = os.path.join(directory, filename)
+
+            with open(filepath, 'rb') as f:
+                topic_name = pickle.load(f)
+                pinhole_camera_model = pickle.load(f)
+                matrices = pickle.load(f)
+
+
+                image_info[topic_name] = (pinhole_camera_model, matrices)
+
+                print "Info loaded from ", filepath
+
+        return image_info
+
+    @staticmethod
+    def save_contam_grid(fp):
+
+        ogrid = rospy.rospy.wait_for_message("contamination_grid", OccupancyGrid)
+
+        data = dict(
+            Header = ogrid.header,
+            MapMetaData = ogrid.info,
+            GridFile = fp + ".csv",
+            )
+
+        #### get grid data as numpy and save as seperate file       
+        with open(fp + ".yaml", 'w+') as outfile:
+            print "Saving to FP ", fp
+            outfile.write( yaml.dump(data, default_flow_style=False) )
+
+            np.savetxt(fp + ".csv", np.array(ogrid.data, dtype=np.int8), delimiter=",")
+            
+            print "Saved"
+        
+
+    @staticmethod
+    def load_map(fp):
+        
+        ogrid = OccupancyGrid()
+        step = None
+        offset = None
+        yaml_file = fp + ".yaml"
+        csv_file = fp + ".csv"
+        with open(yaml_file, "r") as infile:
+            for k, v in yaml.load(infile.read()).iteritems():
+                if k == "Header":
+                    ogrid.header = v
+
+                elif k == "MapMetaData":
+                    ogrid.info = v
+                    step = v.resolution
+                    offset = (v.origin.position.x, v.origin.position.y)
+
+                elif k == "GridFile":
+                    print "GridFile: ", v
+                else: 
+                    print "Unexpected k : ", k
+                    raise TypeError("Unexpected key type in yaml file: " + yaml_file)
+
+            ogrid.data = list(np.loadtxt(csv_file, dtype=np.int8, delimiter=","))
+
+        print "Map loaded"
+        
+        return ogrid, step, offset
+
+
+    @staticmethod
+    def build_image_map(map_file_path, img_fp, img_topic, save_file_prepend, save_dir):
+        ''' Load the camera image info. 
+            Load the images.
+
+            For each pixel on the image that is green, 
+                add it to the map.
+            Overlay image onto map?
+        '''
+        orig_map, step, offset = PixelConversion.load_map(map_file_path)
+
+        updated_grid = orig_map.data[:]
+        resolution = orig_map.info.resolution
+        offset_x = orig_map.info.origin.position.x
+        offset_y = orig_map.info.origin.position.y
+        height = orig_map.info.height
+        width = orig_map.info.width
+
+        image_info = PixelConversion.load_all_image_info()
+       
+        pinhole_camera_model, tf_matrices = image_info[img_topic]
+        # for topic_name, (pinhole_camera_model, matrices) in image_info.iteritems():
+        #     print "Image topic: ", topic_name
+
+        # load image
+        img = cv2.imread(img_fp)
+        # Get the green parts of the image
+        img, thresh_mask = PixelConversion.threshold_green(img)
+
+        # convert image to map dimensions
+        # print "matrices\n", tf_matrices
+        print "Converting"
+
+        camera_frame_map_frame_tf_mat = tf_matrices[0]
+        map_frame_camera_frame_tf_mat = tf_matrices[1]
+
+        # Define map plane
+        p1 = [-94.0, -98.0, 0.0]
+        p2 = [-92.0, -88.0, 0.0]
+        p3 = [-84.0, -88.0, 0.0]
+
+        # Tf to the camera frame
+        # camera_frame - map frame tf
+        # pts in camera frame coodrds
+        p1 = list(np.dot(camera_frame_map_frame_tf_mat, np.array([p1[0], p1[1], p1[2], 1.0])))[:3]
+        p2 = list(np.dot(camera_frame_map_frame_tf_mat, np.array([p2[0], p2[1], p2[2], 1.0])))[:3]
+        p3 = list(np.dot(camera_frame_map_frame_tf_mat, np.array([p3[0], p3[1], p3[2], 1.0])))[:3]
+        plane_norm = PixelConversion.get_plane_normal(p1, p2, p3)         
+        # print "P1 ", p1
+        # print "P2 ", p2
+        # print "P3 ", p3
+        # print "Plane norm: ", plane_norm
+        # point_marker = self.create_points_marker([p1, p2, p3], img_msg.header.frame_id)
+        # self.plane_pub.publish(point_marker)
+
+        
+        # Go through every pixel in the image and find where it hits in 
+        # the map frame and save map to a file
+        for u in xrange(img.shape[0]):
+            for v in xrange(img.shape[1]):
+        
+                # Get the unit vector related to the pixel coords 
+                unit_vector = pinhole_camera_model.projectPixelTo3dRay((u, v))
+                # print "Unit vector ", unit_vector
+                
+                # need unit vector to define ray to cast onto plane
+                line_pt = list(unit_vector)
+                line_norm = PixelConversion.get_line_normal([0.0,0.0,0.0], np.asarray(line_pt) * 10) # just scale the unit vector for another point, maybe just use both unit vector for the point and the line
+
+                inter = PixelConversion.line_plane_intersection(line_pt, line_norm, p1, plane_norm)
+
+                ## intersection is in the camera frame so tf into map frame
+                map_inter_pt = tuple(np.dot(map_frame_camera_frame_tf_mat,np.array([inter[0], inter[1], inter[2], 1.0])))[:3]
+                # print "intersection pt: ", map_inter_pt
+
+                #translate xy to cell - each cell is <resolution> meters wide
+                x = int(round((map_inter_pt[0] - offset_x)/resolution))
+                y = int(round((map_inter_pt[1] - offset_y)/resolution))
+                cell =  y * width + x
+
+                updated_grid[cell] = 50
+
+        new_map_fp = save_dir + save_file_prepend + "_" + img_topic.replace("/", "_") + "_collated.pgm"  
+     
+        print "Writing camera coverage to file..."
+        with open(new_map_fp, "wb+") as f:
+            
+            # define PGM Header
+            pgmHeader = 'P5' + '\n' + str(width) + '  ' + str(height) + '  ' + str(255) + '\n'
+            f.write(pgmHeader)
+
+            buff = array.array('B')
+            for y in xrange(0, height):
+                for x in xrange(0, width):
+                    i = x + (height - y - 1) * width
+                    char = 205
+                    if updated_grid[i] == 0:
+                        char = 254
+                    elif updated_grid[i] > 0.65: # makes it black
+                        char = 000
+
+                    buff.append(char)
+
+            buff.tofile(f)
+
+        print "File saved at ", new_map_fp  
+
+
+
+
+        # Go through every pixel in the image that is green and mark that in the pgm
+        # Save resulting map        
+        green_points_grid = np.zeros(len(orig_map.data))
+        pixels_contam = 0
+        for u in xrange(thresh_mask.shape[0]):
+            for v in xrange(thresh_mask.shape[1]):
+                if thresh_mask[u,v] > 0:
+                    pixels_contam += 1
+        
+                    # Get the unit vector related to the pixel coords 
+                    unit_vector = pinhole_camera_model.projectPixelTo3dRay((u, v))
+                    # print "Unit vector ", unit_vector
+                    
+                    # need unit vector to define ray to cast onto plane
+                    line_pt = list(unit_vector)
+                    line_norm = PixelConversion.get_line_normal([0.0,0.0,0.0], np.asarray(line_pt) * 10) # just scale the unit vector for another point, maybe just use both unit vector for the point and the line
+
+                    inter = PixelConversion.line_plane_intersection(line_pt, line_norm, p1, plane_norm)
+
+                    ## intersection is in the camera frame so tf into map frame
+                    map_inter_pt = tuple(np.dot(map_frame_camera_frame_tf_mat,np.array([inter[0], inter[1], inter[2], 1.0])))[:3]
+                    # print "intersection pt: ", map_inter_pt
+
+                    #translate xy to cell - each cell is <resolution> meters wide
+                    x = int(round((map_inter_pt[0] - offset_x)/resolution))
+                    y = int(round((map_inter_pt[1] - offset_y)/resolution))
+                    cell =  y * width + x
+
+                    green_points_grid[cell] = 100
+
+        print "pixels contaminated: ", pixels_contam
+        new_map_fp = save_dir + save_file_prepend + "_" + img_topic.replace("/", "_") + "_contaminated_map.pgm"  
+     
+        ## Save the map to pgm image
+        ## Contaminated areas as black and the rest as light grey
+        print "Writing real contam to file..."
+        with open(new_map_fp, "wb+") as f:
+            
+            # define PGM Header
+            pgmHeader = 'P5' + '\n' + str(width) + '  ' + str(height) + '  ' + str(255) + '\n'
+            f.write(pgmHeader)
+
+            buff = array.array('B')
+            for y in xrange(0, height):
+                for x in xrange(0, width):
+                    i = x + (height - y - 1) * width
+                    char = 205
+                    # if green_points_grid[i] == 0:
+                    #     char = 254
+                    if green_points_grid[i] > 0.65: # makes it black
+                        char = 000
+
+                    buff.append(char)
+
+            buff.tofile(f)
+
+        print "File saved at ", new_map_fp  
+
+
+
+        ### Create an overlaid image of the real versus perceived
+        ## Save it to ppm style map
+        ## Contaminated areas as black and the rest as light grey
+        print "Writing overlay to file..."
+        new_map_fp = save_dir + save_file_prepend + "_" + img_topic.replace("/", "_") + "_contaminated_overlay_map.pgm"  
+        with open(new_map_fp, "wb+") as f:
+            
+            # define PGM Header
+            pgmHeader = 'P5' + '\n' + str(width) + '  ' + str(height) + '  ' + str(255) + '\n'
+            f.write(pgmHeader)
+
+            buff = array.array('B')
+            for y in xrange(0, height):
+                for x in xrange(0, width):
+                    i = x + (height - y - 1) * width
+                    char = 205 
+                    if green_points_grid[i] > 0.65: 
+                        char = 254 # confirmed contam areas now white
+                    elif orig_map.data[i] > 0.65:
+                        char = 000 # simulated contam areas now black
+                    buff.append(char)
+
+            buff.tofile(f)
+
+        print "File saved at ", new_map_fp  
+
+
+        ## Lastly save the original map it was built from
+        print "Writing original map to file..."
+        new_map_fp = save_dir + save_file_prepend + "_" + img_topic.replace("/", "_") + "orig_map.pgm"  
+        with open(new_map_fp, "wb+") as f:
+            
+            # define PGM Header
+            pgmHeader = 'P5' + '\n' + str(width) + '  ' + str(height) + '  ' + str(255) + '\n'
+            f.write(pgmHeader)
+
+            buff = array.array('B')
+            for y in xrange(0, height):
+                for x in xrange(0, width):
+                    i = x + (height - y - 1) * width
+                    char = 205
+                    if orig_map.data[i] == 0:
+                        char = 254
+                    elif orig_map.data[i] > 65: # makes it black
+                        char = 000
+
+                    buff.append(char)
+
+            buff.tofile(f)
+
+        print "File saved at ", new_map_fp  
+
+
+
+    @staticmethod
+    def threshold_green(img):    
+        ''' Takes the original image and returns a masked image of only the green parts.
+
+        Returns the threshed image and the thresholding mask.
+
+        Alg:
+        1) Blur image
+        2) Convert to hsv color space
+        3) Define hsv limits
+        4) Threshold the image with those hsv limits
+        5) Mask the original image with the thresholded image as the mask
+
+        ''' 
+        blur_img = cv2.GaussianBlur(img,(9,9),0) 
+        img_hsv = cv2.cvtColor(blur_img, cv2.COLOR_BGR2HSV)
+
+        hsv_min = np.asarray([20, 24, 5])
+        hsv_max = np.asarray([100, 255, 255])
+        threshed = cv2.inRange(img_hsv, hsv_min, hsv_max)
+        # cv2.imshow("Orig & Thresholded - 2", np.hstack([img, threshed]))
+        # print threshed.shape
+        # cv2.imshow("threshed - 2", threshed)
+
+        ## now mask the image to only leave the green
+        # Bitwise-AND mask and original image
+        res = cv2.bitwise_and(blur_img,img, mask = threshed)
+        cv2.imshow("Orig, Blurred, Masked", np.hstack([img, blur_img, res]))
+
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+        return res, threshed
+        
+    
 
 
 if __name__ == '__main__':
     rospy.init_node("image_2_world")
 
-    pixel_conversion = PixelConversion()
+    # pixel_conversion = PixelConversion() # Allows user to click on image in rviz with publish point tool and it shows the intersection 
+    # PixelConversion.store_all_image_info() 
+    # PixelConversion.get_all_image_info()
+    # map_file_path = raw_input("Map File Path?\n")
+    map_fp = "/nfs/attic/smartw/users/kraftko/Bagfiles/contam_eval/tuesday_02022016/maps/kyle_after_run_5"
+    img_fp = "/nfs/attic/smartw/users/kraftko/Bagfiles/contam_eval/tuesday_02022016/trial_5/kyle_single_05_blacklight_imgs_after_door_camera.jpg"
+    save_file_prepend = "kyle_single_05"
+    save_dir = "/nfs/attic/smartw/users/kraftko/Bagfiles/contam_eval/tuesday_02022016/results/"
+
+    img_topic = "/image_raw"    
+    if "wall_camera" in img_fp:
+        img_topic = "/wall_camera/image_raw"
+    elif "door_camera" in img_fp:
+        img_topic = "/door_camera/image_raw"
+
+    PixelConversion.build_image_map(map_fp, img_fp, img_topic, save_file_prepend, save_dir)
+    # PixelConversion.color_match_image()
           
-    rospy.spin()
+    # rospy.spin()
