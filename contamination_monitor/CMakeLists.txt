@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   roslib
   occupancy_grid_utils
+  people_tracking
 )
 
 find_package(Boost REQUIRED)
@@ -67,9 +68,11 @@ qt4_wrap_cpp(MOC_FILES
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-#add_message_files(
-# FILES
-#)
+add_message_files(
+ FILES
+ ContamPersonLocation.msg
+ ContamPersonLocationArray.msg
+)
 
 ## Generate services in the 'srv' folder
 add_service_files(
@@ -91,6 +94,7 @@ generate_messages(
   DEPENDENCIES
   std_msgs
   geometry_msgs
+  people_tracking
 )
 
 ###################################

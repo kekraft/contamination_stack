@@ -1,1 +1,0 @@
-PersonLocation2D[] people_location_2d

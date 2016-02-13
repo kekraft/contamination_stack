@@ -19,6 +19,7 @@ from geometry_msgs.msg import Polygon, PolygonStamped, PointStamped
 import rospkg
 import tf
 from people_tracking.msg import PersonLocation, PersonLocationArray
+from contamination_monitor.msg import ContamPersonLocation, ContamPersonLocationArray
 
 from tf.transformations import euler_from_quaternion
 from tf.transformations import quaternion_from_euler
@@ -55,8 +56,6 @@ class ContaminationGrid2D():
         self.step = 0
         self.offset = (0,0)
 
-        self.objects_contam_level = {} # stores tracked objects contamination level, k=ob_id, v=contam level
-
         #Efficiency of cleaning robot
         self.power = 0.0
         #Contaminant picked up from environment
@@ -84,8 +83,8 @@ class ContaminationGrid2D():
         # print "TF MATRIX"
         # print self.laser_2_map_tf_mat
         
-        self.ppl_contam_levels = dict()
-        self.layout = MultiArrayLayout([MultiArrayDimension(label="contam", stride=1)], 0)  
+        self.ppl_contam_levels = dict() # dictionary that holds ppl, their prev position, and their contam level
+        self.ppl_contam_locs = dict() # dictionary that holds ppl, their prev position, and their contam level
 
         self.reset()
 
@@ -108,7 +107,7 @@ class ContaminationGrid2D():
         self.reset_contam_grid_service = rospy.Service('contamination_monitor/reset_contam_grid', ResetContaminationGrid, self.reset_contam_grid)
          
         self.occ_grid_pub = rospy.Publisher("contamination_grid", OccupancyGrid, queue_size=10, latch = True)
-        self.contam_pub = rospy.Publisher("contam_array", Float32MultiArray, queue_size=10)
+        self.contam_people_locs_pub = rospy.Publisher("contam_people_locations", ContamPersonLocationArray, queue_size=10)
         
         self.tracking_marker_array_sub = rospy.Subscriber("people_locations", PersonLocationArray, self.update_contam)
         # self.bot_marker_sub = rospy.Subscriber("cleaner_bot", Marker, self._clean_contam)
@@ -163,6 +162,14 @@ class ContaminationGrid2D():
                     # print "b ", b
                     # print "theta ", theta
 
+                    ## add in the persons location, relative to the occ grid
+                    person_loc.pose.position.x = center[0]
+                    person_loc.pose.position.y = center[1]
+                    person_loc.ellipse_theta = theta
+                    person_loc.header.frame_id = self.ogrid_frame_id
+
+                    self.ppl_contam_locs[person_id] = person_loc # adding in person's location
+
                     with self.lock:
 
                         if self.transmission_method == Transmission.BINARY:
@@ -191,10 +198,9 @@ class ContaminationGrid2D():
         # code you want to evaluate
         # elapsed = timeit.default_timer() - start_time
         # print "Time elapsed: ", elapsed
-        # #publish contamination to show correct colors
-        # self.layout.dim[0].size = len(self.ppl_contam_levels)
-        # self.contam_pub.publish(Float32MultiArray(self.layout, self.ppl_contam_levels))
-        pass
+
+        # publish contamination info of the ppl, includes their contam level and location
+        self.pub_people_contam_locations()
 
 
     def binary_person_2_env(self, ellipse_id, ellipse_center, ellipse_a, ellipse_b, ellipse_theta):
@@ -243,6 +249,8 @@ class ContaminationGrid2D():
                     if self.ogrid.data[index] > self.NOT_CONTAMINATED:
                         self.ppl_contam_levels[ellipse_id] = self.FULLY_CONTAMINATED
                         return
+
+
 
     def gauss_person_2_env(self, ellipse_center, ellipse_a, ellipse_b, ellipse_theta):
         ''' This method spreads contamination from the person to the environment,
@@ -595,6 +603,19 @@ class ContaminationGrid2D():
             ## without starting a new node.
             ## there should be a way to do that in mark_people to satisfy both things here
 
+    def pub_people_contam_locations(self):
+        contam_ppl_locs = ContamPersonLocationArray()
+
+        for key, value in self.ppl_contam_levels.iteritems():
+
+            contam_per_loc = ContamPersonLocation()
+            contam_per_loc.person_location = self.ppl_contam_locs[key] 
+            contam_per_loc.contamination_level = value
+
+            contam_ppl_locs.contam_people_location.append(contam_per_loc)
+
+        self.contam_people_locs_pub.publish(contam_ppl_locs)
+
 
 
 
@@ -677,5 +698,5 @@ if __name__ == '__main__':
 
         #publish contamination to show correct colors
         self.layout.dim[0].size = len(self.ppl_contam_levels)
-        self.contam_pub.publish(Float32MultiArray(self.layout, self.ppl_contam_levels))
+        self.contam_people_locations.publish(Float32MultiArray(self.layout, self.ppl_contam_levels))
 '''
