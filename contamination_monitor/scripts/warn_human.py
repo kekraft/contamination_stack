@@ -96,7 +96,7 @@ class WarnSystem():
 
 
 
-    def needs_warning(self, person_id, contam_level, ellipse_center, ellipse_a, ellipse_b, ellipse_theta):
+    def needs_warning(self, person_id, contam_level, ellipse_center, ellipse_a, ellipse_b, ellipse_theta, dist_thresh = 1.0, time_thresh = 20.0):
         '''  Checks to see if human needs to be warned.
               
               In the current basic form that just see's if the human is near an area
@@ -119,11 +119,13 @@ class WarnSystem():
             if person_id in self.ppl_warnings:
                 ### check to see if location is within the last warning area within the threshold
                 warnings = self.ppl_warnings[person_id]
-                warned_in_area = warnings[-1][0]
+                # warned_in_area = (warnings[-1][0]
                 ## check to see if duration is within the warning time threshold
-                warned_recently = warnings[-1][1]
+                time_diff = (rospy.Time.now() - warnings[-1][1]).to_sec()
+                warned_recently = (time_diff < time_thresh)
 
-                if warned_in_area or warned_recently:
+                # if warned_in_area or warned_recently:
+                if warned_recently:
                     return False
             
             # see if human near contaminated area
@@ -155,7 +157,6 @@ class WarnSystem():
 
         self.ppl_warnings[person_id].append((center, time))
 
-    @todo
     def clear_warnings(self, person_id):
         ''' Clear either all the warnings or the one related to the person_id given '''
         pass

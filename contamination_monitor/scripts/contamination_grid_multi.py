@@ -112,7 +112,9 @@ class ContaminationGrid2D():
         self.tracking_marker_array_sub = rospy.Subscriber("people_locations", PersonLocationArray, self.update_contam)
         # self.bot_marker_sub = rospy.Subscriber("cleaner_bot", Marker, self._clean_contam)
 
-        self.add_contam_sub = rospy.Subscriber("added_contamination_polygon", PolygonStamped, self.add_contam_cb)
+        ## subscribing to messages to update contam grid on the fly from cmd line or gui tools
+        self.add_contam_sub = rospy.Subscriber("added_contamination_polygon", PolygonStamped, self.tool_contam_update_cb, "ADD")
+        self.remove_contam_sub = rospy.Subscriber("removed_contamination_polygon", PolygonStamped, self.tool_contam_update_cb, "REMOVE")
 
         # self.pub_map_continually()
         self.pub_contam_grid_now()
@@ -182,7 +184,7 @@ class ContaminationGrid2D():
 
                             # update occ grid and contamination after person spread
                             # print "Num grid cells: ", len(contam_grid_cells)
-                            self._add_contam_via_indices(contam_grid_cells)
+                            self._update_contam_via_indices(contam_grid_cells, self.FULLY_CONTAMINATED)
 
                         elif self.transmission_method == Transmission.GAUSSIAN:
                             pass
@@ -340,7 +342,7 @@ class ContaminationGrid2D():
         self.ogrid.data = data
 
     #add initial contamination (rectangles)
-    def _add_contam(self, lower_left, upper_right, intensity, print_stuff = False):
+    def _update_contam_in_region(self, lower_left, upper_right, intensity, print_stuff = False):
 
         self.lock.acquire()
 
@@ -365,10 +367,10 @@ class ContaminationGrid2D():
 
         self.lock.release()
 
-    def _add_contam_via_indices(self, indices_list):
+    def _update_contam_via_indices(self, indices_list, intensity):
         for index in indices_list:
 
-            self.ogrid.data[index] = self.FULLY_CONTAMINATED
+            self.ogrid.data[index] = intensity
                     
             # self.contam_locs[index] = (x, y) #marked as contam spot now
                 
@@ -532,8 +534,10 @@ class ContaminationGrid2D():
         
         return is_reset
 
-    def add_contam_cb(self, msg):
-        ''' Makes these cells in the occ grid contaminated.
+    def tool_contam_update_cb(self, msg, tool_update_type="ADD"):
+        ''' Update these cells in the occ grid based on the location and tool type.
+
+            Currently, only adds or removes 100%.
         '''
         ## Make sure the points are in the correct frame
         frame_id = msg.header.frame_id
@@ -552,12 +556,15 @@ class ContaminationGrid2D():
                         (xyz[0] >= upper_right[0] and xyz[1] >= upper_right[1]):
                 upper_right = xyz       
 
-        print "Adding contam"
-        self._add_contam(lower_left, upper_right, intensity=self.FULLY_CONTAMINATED, print_stuff=True)
-        print "contam added"
+        if tool_update_type == "ADD":
+            print "Adding contam"
+            self._update_contam_in_region(lower_left, upper_right, intensity=self.FULLY_CONTAMINATED, print_stuff=True)
+            print "contam added"
+        elif tool_update_type == "REMOVE":
+            print "Removing contam"
+            self._update_contam_in_region(lower_left, upper_right, intensity=self.NOT_CONTAMINATED, print_stuff=True)
 
         self.pub_contam_grid_now()
-
 
     def pub_contam_grid_now(self):
         with self.lock:

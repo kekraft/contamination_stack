@@ -5,8 +5,9 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
+        - /Grid1
+        - /Grid1/Offset1
         - /Marker1
-        - /Marker1/Status1
       Splitter Ratio: 0.5
     Tree Height: 84
   - Class: rviz/Selection
@@ -17,6 +18,7 @@ Panels:
       - /2D Nav Goal1
       - /Publish Point1
       - /Add Contamination1
+      - /Remove Contamination1
     Name: Tool Properties
     Splitter Ratio: 0.588679
   - Class: rviz/Views
@@ -43,11 +45,11 @@ Visualization Manager:
       Name: Grid
       Normal Cell Count: 0
       Offset:
-        X: 0
-        Y: 0
+        X: -100
+        Y: -100
         Z: 0
       Plane: XY
-      Plane Cell Count: 10
+      Plane Cell Count: 40
       Reference Frame: <Fixed Frame>
       Value: true
     - Alpha: 0.7
@@ -62,10 +64,10 @@ Visualization Manager:
       Class: rviz/Map
       Color Scheme: map
       Draw Behind: false
-      Enabled: false
+      Enabled: true
       Name: Map
       Topic: /contamination_grid
-      Value: false
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -158,12 +160,12 @@ Visualization Manager:
       Transport Hint: raw
       Value: false
       Visibility:
-        "": true
         ContaminatedMarkers: true
         DoorCamera: true
         FilteredScan: true
         Grid: true
         Map: true
+        Marker: true
         MultiPersonMarkers: true
         PersonLabels: true
         Scan: true
@@ -218,12 +220,12 @@ Visualization Manager:
       Transport Hint: raw
       Value: false
       Visibility:
-        "": true
         ContaminatedMarkers: true
         DoorCamera: true
         FilteredScan: true
         Grid: true
         Map: true
+        Marker: true
         MidCamera: true
         MultiPersonMarkers: true
         PersonLabels: true
@@ -271,11 +273,223 @@ Visualization Manager:
           X: 0
           Y: 0
           Z: 0
+        - Name: Rect 1
+          X: 0
+          Y: 0
+          Z: 0
+        - Name: Rect 2
+          X: 0
+          Y: 0
+          Z: 0
+        - Name: Rect 4
+          X: -94.1055
+          Y: -92.3793
+          Z: 0
+        - Name: Rect 4
+          X: -93.9723
+          Y: -90.7029
+          Z: 0
+        - Name: Rect 4
+          X: -93.1919
+          Y: -89.6374
+          Z: 0
+        - Name: Rect 4
+          X: -92.4436
+          Y: -89.2556
+          Z: 0
+        - Name: Rect 4
+          X: -91.9182
+          Y: -89.3035
+          Z: 0
+        - Name: Rect 4
+          X: -92.6842
+          Y: -90.1225
+          Z: 0
+        - Name: Rect 4
+          X: -94.7145
+          Y: -90.7162
+          Z: 0
+        - Name: Rect 4
+          X: -94.0201
+          Y: -91.7724
+          Z: 0
+        - Name: Rect 4
+          X: -94.3195
+          Y: -89.6829
+          Z: 0
+        - Name: Rect 4
+          X: -93.3964
+          Y: -90.144
+          Z: 0
+        - Name: Rect 4
+          X: -92.5126
+          Y: -90.6254
+          Z: 0
+        - Name: Rect 4
+          X: -92.971
+          Y: -90.0076
+          Z: 0
+        - Name: Rect 4
+          X: -91.9411
+          Y: -91.3556
+          Z: 0
+        - Name: Rect 4
+          X: -91.9867
+          Y: -91.1047
+          Z: 0
+        - Name: Rect 4
+          X: -92.1123
+          Y: -90.8195
+          Z: 0
+        - Name: Rect 4
+          X: -92.5812
+          Y: -90.6825
+          Z: 0
+        - Name: Rect 4
+          X: -92.261
+          Y: -91.2077
+          Z: 0
+    - Class: contamination_monitor/RemoveContamination
+      Rects:
+        - /contamination_removal
+        - /removed_contamination_polygon
+        - Name: Rect 0
+          X: -94.2399
+          Y: -91.5778
+          Z: 0
+        - Name: Rect 0
+          X: -94.055
+          Y: -92.0596
+          Z: 0
+        - Name: Rect 0
+          X: -94.7145
+          Y: -90.7047
+          Z: 0
+        - Name: Rect 0
+          X: -94.3327
+          Y: -92.0262
+          Z: 0
+        - Name: Rect 0
+          X: -94.3545
+          Y: -89.6827
+          Z: 0
+        - Name: Rect 0
+          X: -92.1922
+          Y: -90.2718
+          Z: 0
+        - Name: Rect 0
+          X: -92.65
+          Y: -90.7396
+          Z: 0
+        - Name: Rect 0
+          X: -92.4437
+          Y: -89.7691
+          Z: 0
+        - Name: Rect 0
+          X: -92.5927
+          Y: -90.4083
+          Z: 0
+        - Name: Rect 0
+          X: -92.238
+          Y: -90.6826
+          Z: 0
+        - Name: Rect 0
+          X: -92.318
+          Y: -90.0091
+          Z: 0
+        - Name: Rect 0
+          X: -92.0781
+          Y: -90.3061
+          Z: 0
+        - Name: Rect 0
+          X: -92.238
+          Y: -90.363
+          Z: 0
+        - Name: Rect 0
+          X: -92.1237
+          Y: -90.2492
+          Z: 0
+        - Name: Rect 0
+          X: -92.1465
+          Y: -90.2947
+          Z: 0
+        - Name: Rect 0
+          X: -92.0893
+          Y: -89.6904
+          Z: 0
+        - Name: Rect 0
+          X: -91.9752
+          Y: -89.9074
+          Z: 0
+        - Name: Rect 0
+          X: -92.2608
+          Y: -90.363
+          Z: 0
+        - Name: Rect 0
+          X: -92.0781
+          Y: -90.2719
+          Z: 0
+        - Name: Rect 0
+          X: -92.0323
+          Y: -90.2379
+          Z: 0
+        - Name: Rect 0
+          X: -92.2722
+          Y: -90.2717
+          Z: 0
+        - Name: Rect 0
+          X: -91.9753
+          Y: -90.295
+          Z: 0
+        - Name: Rect 0
+          X: -92.971
+          Y: -90.0076
+          Z: 0
+        - Name: Rect 0
+          X: -92.0095
+          Y: -90.9678
+          Z: 0
+        - Name: Rect 0
+          X: -92.0666
+          Y: -90.7967
+          Z: 0
+        - Name: Rect 0
+          X: -92.2152
+          Y: -90.7282
+          Z: 0
+        - Name: Rect 0
+          X: -92.261
+          Y: -91.2077
+          Z: 0
+        - Name: Rect 0
+          X: -91.7928
+          Y: -91.4124
+          Z: 0
+        - Name: Rect 0
+          X: -91.9411
+          Y: -91.4126
+          Z: 0
+        - Name: Rect 0
+          X: -91.8726
+          Y: -90.9906
+          Z: 0
+        - Name: Rect 0
+          X: -92.3627
+          Y: -91.2614
+          Z: 0
+        - Name: Rect 0
+          X: -92.2577
+          Y: -90.8207
+          Z: 0
+        - Name: Rect 0
+          X: -91.9639
+          Y: -91.2415
+          Z: 0
   Value: true
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 27.9033
+      Distance: 28.5266
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.06
         Stereo Focal Distance: 1
@@ -287,10 +501,10 @@ Visualization Manager:
         Z: -13.5415
       Name: Current View
       Near Clip Distance: 0.01
-      Pitch: 1.5698
+      Pitch: 1.5248
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 0.00550211
+      Yaw: 0.0805023
     Saved: ~
 Window Geometry:
   Displays:
