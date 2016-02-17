@@ -45,10 +45,12 @@
      <arg name="initial_pose_y" value="$(arg initial_pose_y)"/>
      <arg name="initial_pose_a" value="$(arg initial_pose_a)"/>
      <arg name="broadcast_tf"   value="true"/>
+
+     <remap from="/scrubber/map" to="map"/>
    </include>
    </group>
 
-   <remap from="/scrubber/map" to="map"/>
+
 
 
 
