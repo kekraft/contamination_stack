@@ -6,6 +6,14 @@
     <arg name="initial_pose_y" default="-90.0"/>
     <arg name="initial_pose_a" default="0.0"/>
 
+      <!-- Map server -->
+    <node name="scrubber_map_server" pkg="map_server" type="map_server" args="$(arg map_file)">
+        <remap from="/map" to="/scrubber/map"
+    <node/>
+
+    <node pkg="tf" type="static_transform_publisher" name="scrubber_to_etu_map"
+      args="0.0 0.0 0.0 0.0 0.0 0.0 1.0 /map /scrubber/map 500" /> 
+
 <!--         position: 
       x: -92.1255185573
       y: -89.5146291644
