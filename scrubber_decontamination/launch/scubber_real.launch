@@ -6,14 +6,32 @@
     <arg name="initial_pose_y" default="-90.0"/>
     <arg name="initial_pose_a" default="0.0"/>
 
+<!--         position: 
+      x: -92.1255185573
+      y: -89.5146291644
+      z: 0.0
+    orientation: 
+      x: 0.0
+      y: 0.0
+      z: 0.0862777984368
+      w: 0.99627111847
+ -->
+
     <remap from="scrubber/map" to="map"/>
     <group ns="scrubber">
 
         
-        <include file="$(find turtlebot_teleop)/launch/keyboard_teleop.launch">
-        </include>
+        <!-- <include file="$(find turtlebot_teleop)/launch/keyboard_teleop.launch"></include> -->
         <include file="$(find turtlebot_bringup)/launch/minimal.launch"></include>
         <include file="$(find turtlebot_bringup)/launch/3dsensor.launch"></include>
+           <include file="$(find scrubber_decontamination)/launch/scrubber_amcl.launch">
+            <arg name="scan_topic" value="scrubber/scan"/>
+            <arg name="use_map_topic" value="true"/>
+            <arg name="initial_pose_x" value="$(arg initial_pose_x)"/>
+            <arg name="initial_pose_y" value="$(arg initial_pose_y)"/>
+            <arg name="initial_pose_a" value="$(arg initial_pose_a)"/>
+            <arg name="broadcast_tf"   value="true"/>
+        </include>
 
     </group>
 
@@ -28,14 +46,7 @@
    <!-- <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml"/> -->
 
  
-   <include file="$(find scrubber_decontamination)/launch/scrubber_amcl.launch">
-     <arg name="scan_topic" value="scrubber/scan"/>
-     <arg name="use_map_topic" value="true"/>
-     <arg name="initial_pose_x" value="$(arg initial_pose_x)"/>
-     <arg name="initial_pose_y" value="$(arg initial_pose_y)"/>
-     <arg name="initial_pose_a" value="$(arg initial_pose_a)"/>
-     <arg name="broadcast_tf"   value="true"/>
-   </include>
+
 
 
 
