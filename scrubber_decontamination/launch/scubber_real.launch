@@ -8,8 +8,8 @@
 
       <!-- Map server -->
     <node name="scrubber_map_server" pkg="map_server" type="map_server" args="$(arg map_file)">
-        <remap from="/map" to="/scrubber/map"
-    <node/>
+        <remap from="/map" to="/scrubber/map"/>
+    </node>
 
     <node pkg="tf" type="static_transform_publisher" name="scrubber_to_etu_map"
       args="0.0 0.0 0.0 0.0 0.0 0.0 1.0 /map /scrubber/map 500" /> 
