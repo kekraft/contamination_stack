@@ -8,11 +8,11 @@
 
       <!-- Map server -->
     <node name="scrubber_map_server" pkg="map_server" type="map_server" args="$(arg map_file)">
-       <!--  <remap from="/map" to="/scrubber/map"/> -->
+      <!--  <remap from="/map" to="/scrubber/map"/> -->
     </node>
 
     <node pkg="tf" type="static_transform_publisher" name="scrubber_to_etu_map"
-      args="0.0 0.0 0.0 0.0 0.0 0.0 1.0 /map /scrubber/map 500" /> 
+      args="0.0 0.0 0.0 0.0 0.0 0.0 1.0 /contamination/map /map 500" /> 
 
 <!--         position: 
       x: -92.1255185573
@@ -43,7 +43,7 @@
     args="-90.0 -90.0 0.0 0.0 0.0 0.0 /map /odom 500" />  -->
 
     <!--  ************** Navigation  ***************  -->
-   <!-- <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml"/> -->
+   <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml"/>
 
    <!-- <group ns="scrubber"> -->
    <include file="$(find scrubber_decontamination)/launch/scrubber_amcl.launch">
