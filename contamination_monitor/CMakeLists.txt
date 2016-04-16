@@ -32,8 +32,6 @@ add_definitions(-DQT_NO_KEYWORDS)
 ## Here we specify which header files need to be run through "moc",
 ## Qt's meta-object compiler.
 qt4_wrap_cpp(MOC_FILES
-  src/draw_polygon_tool.h
-  src/draw_rectangle_tool.h
   src/add_contamination_tool.h
   src/remove_contamination_tool.h
 )
